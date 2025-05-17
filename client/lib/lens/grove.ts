@@ -1,30 +1,20 @@
-import { StorageClient } from "@lens-chain/storage-client";
-
-const storageClient = StorageClient.create(); 
-
-
 /**
- * Grove Storage Client Helper Functions
+ * Grove Storage Client
  * 
- * This file provides helper functions for interacting with Grove Storage,
+ * This library provides helper functions for interacting with Grove Storage,
  * including uploading, downloading, editing, and deleting content.
  */
 
-import { chains } from "@lens-chain/sdk/viem";
-import {
-  StorageClient,
-  immutable,
-  lensAccountOnly,
-  walletAddressOnly,
-  genericContractCall,
-  FileUploadResponse
-} from "@lens-chain/storage-client";
+import { StorageClient } from "@lens-chain/storage-client";
+
+// If these imports from @lens-chain/sdk and storage-client can't be directly resolved
+// mock them until they can be replaced with actual imports
+const mockChains = {
+  testnet: { id: 37111 },
+  mainnet: { id: 232 }
+};
 
 // Types
-export interface Signer {
-  signMessage({ message }: { message: string }): Promise<string>;
-}
-
 export enum ChainId {
   TESTNET = 37111,
   MAINNET = 232
@@ -37,12 +27,124 @@ export enum ACLType {
   GENERIC_CONTRACT_CALL = "genericContractCall"
 }
 
+export interface Signer {
+  signMessage({ message }: { message: string }): Promise<string>;
+}
+
+export interface FileUploadResponse {
+  uri: string;
+  gatewayUrl: string;
+  storageKey: string;
+}
+
 export interface UploadOptions {
   acl: any;
 }
 
 // Initialize StorageClient
-const storageClient = new StorageClient();
+let storageClient: any;
+
+/**
+ * Initializes the Grove StorageClient
+ * This should be called before any other Grove functions
+ * 
+ * @returns Initialized StorageClient
+ */
+export function initializeGroveClient(): any {
+  if (!storageClient) {
+    try {
+      storageClient = new StorageClient();
+    } catch (error) {
+      console.error("Error initializing Grove client:", error);
+      throw new Error("Failed to initialize Grove client");
+    }
+  }
+  return storageClient;
+}
+
+/**
+ * Creates an immutable ACL configuration
+ * Content with this ACL cannot be modified by anyone
+ * 
+ * @param chainId - Chain ID (testnet or mainnet)
+ * @returns Immutable ACL configuration
+ */
+export function immutable(chainId: ChainId = ChainId.TESTNET): any {
+  // In real implementation, this would use the imported functions
+  // return immutable(chainId);
+  
+  // Mock implementation
+  return {
+    type: "immutable",
+    chainId
+  };
+}
+
+/**
+ * Creates a Lens Account ACL configuration
+ * Content with this ACL can only be modified by the specified Lens account
+ * 
+ * @param lensAccount - Lens account address
+ * @param chainId - Chain ID (testnet or mainnet)
+ * @returns Lens Account ACL configuration
+ */
+export function lensAccountOnly(lensAccount: string, chainId: ChainId = ChainId.TESTNET): any {
+  // In real implementation, this would use the imported functions
+  // return lensAccountOnly(lensAccount, chainId);
+  
+  // Mock implementation
+  return {
+    type: "lensAccount",
+    chainId,
+    lensAccount
+  };
+}
+
+/**
+ * Creates a Wallet Address ACL configuration
+ * Content with this ACL can only be modified by the specified wallet address
+ * 
+ * @param walletAddress - Wallet address
+ * @param chainId - Chain ID (testnet or mainnet)
+ * @returns Wallet Address ACL configuration
+ */
+export function walletAddressOnly(walletAddress: string, chainId: ChainId = ChainId.TESTNET): any {
+  // In real implementation, this would use the imported functions
+  // return walletAddressOnly(walletAddress, chainId);
+  
+  // Mock implementation
+  return {
+    type: "walletAddress",
+    chainId,
+    walletAddress
+  };
+}
+
+/**
+ * Creates a Generic Contract Call ACL configuration
+ * Content with this ACL can only be modified by addresses that can successfully execute a contract call
+ * 
+ * @param contractAddress - Contract address
+ * @param contractFunction - Contract function
+ * @param chainId - Chain ID (testnet or mainnet)
+ * @returns Generic Contract Call ACL configuration
+ */
+export function genericContractCall(
+  contractAddress: string, 
+  contractFunction: string, 
+  chainId: ChainId = ChainId.TESTNET
+): any {
+  // In real implementation, this would use the imported functions
+  // return genericContractCall(contractAddress, contractFunction, chainId);
+  
+  // Mock implementation
+  return {
+    type: "genericContractCall",
+    chainId,
+    contractAddress,
+    contractFunction
+  };
+}
 
 /**
  * Creates Access Control Layer (ACL) configuration
@@ -60,7 +162,10 @@ export function createACL(
   address?: string,
   contractAddress?: string,
   contractFunction?: string
-) {
+): any {
+  // Ensure client is initialized
+  initializeGroveClient();
+  
   switch (aclType) {
     case ACLType.IMMUTABLE:
       return immutable(chainId);
@@ -94,8 +199,16 @@ export async function uploadFile(
   file: File,
   options: UploadOptions
 ): Promise<FileUploadResponse> {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return await storageClient.uploadFile(file, options);
+    // Check file size (8MB limit as per documentation)
+    if (file.size > 8 * 1024 * 1024) {
+      throw new Error("File size exceeds 8MB limit");
+    }
+    
+    return await client.uploadFile(file, options);
   } catch (error) {
     console.error("Error uploading file:", error);
     throw error;
@@ -113,8 +226,11 @@ export async function uploadAsJson(
   data: any,
   options: UploadOptions
 ): Promise<FileUploadResponse> {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return await storageClient.uploadAsJson(data, options);
+    return await client.uploadAsJson(data, options);
   } catch (error) {
     console.error("Error uploading JSON:", error);
     throw error;
@@ -132,8 +248,17 @@ export async function uploadFolder(
   files: File[],
   options: UploadOptions
 ): Promise<FileUploadResponse> {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return await storageClient.uploadFolder(files, options);
+    // Check combined file size (8MB limit as per documentation)
+    const totalSize = files.reduce((size, file) => size + file.size, 0);
+    if (totalSize > 8 * 1024 * 1024) {
+      throw new Error("Combined file size exceeds 8MB limit");
+    }
+    
+    return await client.uploadFolder(files, options);
   } catch (error) {
     console.error("Error uploading folder:", error);
     throw error;
@@ -155,8 +280,16 @@ export async function editFile(
   signer: Signer,
   options: UploadOptions
 ): Promise<FileUploadResponse> {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return await storageClient.editFile(uri, file, signer, options);
+    // Check file size (8MB limit as per documentation)
+    if (file.size > 8 * 1024 * 1024) {
+      throw new Error("File size exceeds 8MB limit");
+    }
+    
+    return await client.editFile(uri, file, signer, options);
   } catch (error) {
     console.error("Error editing file:", error);
     throw error;
@@ -178,8 +311,11 @@ export async function updateJson(
   signer: Signer,
   options: UploadOptions
 ): Promise<FileUploadResponse> {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return await storageClient.updateJson(uri, data, signer, options);
+    return await client.updateJson(uri, data, signer, options);
   } catch (error) {
     console.error("Error updating JSON:", error);
     throw error;
@@ -197,8 +333,11 @@ export async function deleteResource(
   uri: string,
   signer: Signer
 ): Promise<{ success: boolean }> {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return await storageClient.delete(uri, signer);
+    return await client.delete(uri, signer);
   } catch (error) {
     console.error("Error deleting resource:", error);
     throw error;
@@ -212,8 +351,11 @@ export async function deleteResource(
  * @returns Gateway URL
  */
 export function resolveUri(uri: string): string {
+  // Ensure client is initialized
+  const client = initializeGroveClient();
+  
   try {
-    return storageClient.resolve(uri);
+    return client.resolve(uri);
   } catch (error) {
     console.error("Error resolving URI:", error);
     throw error;
@@ -232,46 +374,8 @@ export function isFileSizeValid(file: File, maxSizeInMB: number = 8): boolean {
   return file.size <= maxSizeInBytes;
 }
 
-/**
- * Example usage
- */
-/*
-// Example 1: Upload a file with Lens Account ACL
-const aclConfig = createACL(
-  ACLType.LENS_ACCOUNT,
-  ChainId.TESTNET,
-  "0x1234..."
-);
-
-// Get file from input element
-const fileInput = document.getElementById('fileInput') as HTMLInputElement;
-const file = fileInput.files?.[0];
-
-if (file && isFileSizeValid(file)) {
-  uploadFile(file, { acl: aclConfig })
-    .then(response => {
-      console.log("File uploaded:", response.uri);
-      console.log("Gateway URL:", response.gatewayUrl);
-    })
-    .catch(error => {
-      console.error("Upload failed:", error);
-    });
-}
-
-// Example 2: Edit a file
-const walletClient = /* your wallet client */;/*
-const newFile = /* new file */;/*
-
-editFile("lens://323c0e1cceb...", newFile, walletClient, { acl: aclConfig })
-  .then(response => {
-    console.log("File edited:", response.uri);
-  })
-  .catch(error => {
-    console.error("Edit failed:", error);
-  });
-*/
-
 export default {
+  initializeGroveClient,
   createACL,
   uploadFile,
   uploadAsJson,
@@ -282,5 +386,10 @@ export default {
   resolveUri,
   isFileSizeValid,
   ChainId,
-  ACLType
+  ACLType,
+  // Export ACL creation helpers directly
+  immutable,
+  lensAccountOnly,
+  walletAddressOnly,
+  genericContractCall
 };
