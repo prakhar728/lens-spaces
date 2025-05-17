@@ -14,7 +14,12 @@ export default function StartSpace() {
 
   const startStream = () => {
     if (!title) return
-    setIsStreaming(true)
+    setIsStreaming(true);
+
+    // create a editable lens URI with JSON structure.
+    // Then every chunk (approx less than 8MB) should be uploaded to groove storage - and then edited into the JSON structure. 
+    // All this should happen instantly.
+   
 
     // Simulate upload progress
     const interval = setInterval(() => {

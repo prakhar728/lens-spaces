@@ -26,7 +26,8 @@ export function Navbar({ showWalletConnect = false }: NavbarProps) {
       const account = fetchAccount(client, {
         address: user.address,
       }).unwrapOr(null);
-
+      console.log(await account);
+      
       setAccount(account);
     }
 

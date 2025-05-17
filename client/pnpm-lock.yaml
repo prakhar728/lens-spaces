@@ -14,6 +14,9 @@ importers:
       '@lens-chain/sdk':
         specifier: ^1.0.3
         version: 1.0.3(viem@2.29.4(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.24.4))
+      '@lens-chain/storage-client':
+        specifier: ^1.0.4
+        version: 1.0.4
       '@lens-protocol/client':
         specifier: 0.0.0-canary-20250515092635
         version: 0.0.0-canary-20250515092635(typescript@5.8.3)(viem@2.29.4(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.24.4))
@@ -540,6 +543,9 @@ packages:
         optional: true
       zksync-ethers:
         optional: true
+
+  '@lens-chain/storage-client@1.0.4':
+    resolution: {integrity: sha512-dORCTVwSWP7MWoJ257oriH7EV8g6YU3Pxgligy28XOglLEO0PBb/D4b6fuSSqWZjvfOjr4KCC4UgqU1z66VckQ==}
 
   '@lens-protocol/client@0.0.0-canary-20250515092635':
     resolution: {integrity: sha512-12k8w7JzaIQ89NIjJRll3pqq+GhA9sgQirMQs82NwRnmGK54yRX1RzcFTCwKoucCSJojzb6W0Tfc0cNTk4vtMg==}
@@ -3852,6 +3858,8 @@ snapshots:
   '@lens-chain/sdk@1.0.3(viem@2.29.4(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.24.4))':
     optionalDependencies:
       viem: 2.29.4(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.24.4)
+
+  '@lens-chain/storage-client@1.0.4': {}
 
   '@lens-protocol/client@0.0.0-canary-20250515092635(typescript@5.8.3)(viem@2.29.4(bufferutil@4.0.9)(typescript@5.8.3)(utf-8-validate@5.0.10)(zod@3.24.4))':
     dependencies:
