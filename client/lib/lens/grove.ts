@@ -93,7 +93,7 @@ export function createACL(
       
     case ACLType.WALLET_ADDRESS:
       if (!address) throw new Error("Wallet address is required");
-      return walletOnly(address, chainId);
+      return walletOnly(address as `0x${string}`, chainId);
       
     default:
       throw new Error("Invalid ACL type");

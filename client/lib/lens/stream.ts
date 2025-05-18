@@ -81,7 +81,7 @@ export async function initializeStream(
     
     // Upload initial manifest to Grove
     const response = await uploadAsJson(manifest, { acl: updateACL });
-    console.log(response);
+    console.log(`https://api.grove.storage/status/${response.resource.storageKey}`);
     
     return response.uri;
   } catch (error) {

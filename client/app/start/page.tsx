@@ -92,7 +92,7 @@ export default function StartSpace() {
 
       // Create stream recorder
       recorderRef.current = new StreamRecorder(
-        account.owner,
+        signer.address,
         lensClientRef.current, // Lens client for signing
         { chunkDuration: 3000 } // Create a new chunk every 3 seconds
       );
@@ -113,6 +113,8 @@ export default function StartSpace() {
         });
       });
 
+      console.log(signer.address);
+      
       // Initialize the stream
       const uri = await recorderRef.current.initializeStream(
         title,
@@ -201,7 +203,7 @@ export default function StartSpace() {
     if (!streamUri) return;
 
     // Create shareable URL
-    const shareUrl = `${window.location.origin}/spaces/${encodeURIComponent(
+    const shareUrl = `${window.location.origin}/space/${encodeURIComponent(
       streamUri
     )}`;
 
@@ -309,9 +311,44 @@ export default function StartSpace() {
                 yours.
               </p>
               {streamUri && (
-                <p className="mt-2">
-                  <span className="font-medium">Stream URI:</span> {streamUri}
-                </p>
+                <div className="mt-4 flex flex-col items-center">
+                  <p className="mb-2 font-medium">Direct Link:</p>
+                  <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                    <Button
+                      variant="link"
+                      className="text-primary font-medium truncate max-w-md"
+                      onClick={() => {
+                        const shareUrl = `${
+                          window.location.origin
+                        }/space/${encodeURIComponent(streamUri)}`;
+                        window.open(shareUrl, "_blank");
+                      }}
+                    >
+                      {`${window.location.origin}/space/${encodeURIComponent(
+                        streamUri
+                      )}`}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="px-2 rounded-full flex-shrink-0"
+                      onClick={() => {
+                        const shareUrl = `${
+                          window.location.origin
+                        }/space/${encodeURIComponent(streamUri)}`;
+                        navigator.clipboard.writeText(shareUrl).then(() => {
+                          toast({
+                            title: "Link Copied",
+                            description:
+                              "Direct stream link copied to clipboard",
+                          });
+                        });
+                      }}
+                    >
+                      <Share className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
