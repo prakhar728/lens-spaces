@@ -16,6 +16,7 @@ export const getPublicClient = () => {
   return publicClient;
 };
 
+
 export const getBuilderClient = async (address: string, signMessage: (message: string) => Promise<string>) => {
   if (!address) return null;
 

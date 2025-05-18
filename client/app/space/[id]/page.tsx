@@ -9,6 +9,7 @@ import { Heart, MessageSquare, Share2, ThumbsUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { StreamPlayer, StreamManifest } from "@/lib/lens/stream";
+import { useParams } from "next/navigation";
 
 // Chat message type
 interface ChatMessage {
@@ -28,7 +29,7 @@ const DEFAULT_SPACE = {
   isLive: true,
 };
 
-export default function SpacePage({ params }: { params: { id: string } }) {
+export default function SpacePage() {
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [reactions, setReactions] = useState({
@@ -40,6 +41,7 @@ export default function SpacePage({ params }: { params: { id: string } }) {
   const [space, setSpace] = useState(DEFAULT_SPACE);
   const [manifest, setManifest] = useState<StreamManifest | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
+  const {id} = useParams()
 
   // Chat messages state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
@@ -69,8 +71,9 @@ export default function SpacePage({ params }: { params: { id: string } }) {
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Decode the stream URI from the URL parameter
-  const streamUri = decodeURIComponent(params.id);
-
+  const streamUri = decodeURIComponent(id);
+  console.log(streamUri);
+  
   // Initialize player and load stream
   useEffect(() => {
     async function initializePlayer() {

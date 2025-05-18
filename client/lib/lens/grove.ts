@@ -5,7 +5,7 @@
  * including uploading, downloading, editing, and deleting content.
  */
 
-import { StorageClient } from "@lens-chain/storage-client";
+import { immutable, lensAccountOnly, StorageClient, walletOnly } from "@lens-chain/storage-client";
 
 // If these imports from @lens-chain/sdk and storage-client can't be directly resolved
 // mock them until they can be replaced with actual imports
@@ -53,7 +53,7 @@ let storageClient: any;
 export function initializeGroveClient(): any {
   if (!storageClient) {
     try {
-      storageClient = new StorageClient();
+      storageClient = StorageClient.create();
     } catch (error) {
       console.error("Error initializing Grove client:", error);
       throw new Error("Failed to initialize Grove client");
@@ -62,89 +62,6 @@ export function initializeGroveClient(): any {
   return storageClient;
 }
 
-/**
- * Creates an immutable ACL configuration
- * Content with this ACL cannot be modified by anyone
- * 
- * @param chainId - Chain ID (testnet or mainnet)
- * @returns Immutable ACL configuration
- */
-export function immutable(chainId: ChainId = ChainId.TESTNET): any {
-  // In real implementation, this would use the imported functions
-  // return immutable(chainId);
-  
-  // Mock implementation
-  return {
-    type: "immutable",
-    chainId
-  };
-}
-
-/**
- * Creates a Lens Account ACL configuration
- * Content with this ACL can only be modified by the specified Lens account
- * 
- * @param lensAccount - Lens account address
- * @param chainId - Chain ID (testnet or mainnet)
- * @returns Lens Account ACL configuration
- */
-export function lensAccountOnly(lensAccount: string, chainId: ChainId = ChainId.TESTNET): any {
-  // In real implementation, this would use the imported functions
-  // return lensAccountOnly(lensAccount, chainId);
-  
-  // Mock implementation
-  return {
-    type: "lensAccount",
-    chainId,
-    lensAccount
-  };
-}
-
-/**
- * Creates a Wallet Address ACL configuration
- * Content with this ACL can only be modified by the specified wallet address
- * 
- * @param walletAddress - Wallet address
- * @param chainId - Chain ID (testnet or mainnet)
- * @returns Wallet Address ACL configuration
- */
-export function walletAddressOnly(walletAddress: string, chainId: ChainId = ChainId.TESTNET): any {
-  // In real implementation, this would use the imported functions
-  // return walletAddressOnly(walletAddress, chainId);
-  
-  // Mock implementation
-  return {
-    type: "walletAddress",
-    chainId,
-    walletAddress
-  };
-}
-
-/**
- * Creates a Generic Contract Call ACL configuration
- * Content with this ACL can only be modified by addresses that can successfully execute a contract call
- * 
- * @param contractAddress - Contract address
- * @param contractFunction - Contract function
- * @param chainId - Chain ID (testnet or mainnet)
- * @returns Generic Contract Call ACL configuration
- */
-export function genericContractCall(
-  contractAddress: string, 
-  contractFunction: string, 
-  chainId: ChainId = ChainId.TESTNET
-): any {
-  // In real implementation, this would use the imported functions
-  // return genericContractCall(contractAddress, contractFunction, chainId);
-  
-  // Mock implementation
-  return {
-    type: "genericContractCall",
-    chainId,
-    contractAddress,
-    contractFunction
-  };
-}
 
 /**
  * Creates Access Control Layer (ACL) configuration
@@ -172,16 +89,11 @@ export function createACL(
       
     case ACLType.LENS_ACCOUNT:
       if (!address) throw new Error("Lens account address is required");
-      return lensAccountOnly(address, chainId);
+      return lensAccountOnly(address as `0x${string}`, chainId);
       
     case ACLType.WALLET_ADDRESS:
       if (!address) throw new Error("Wallet address is required");
-      return walletAddressOnly(address, chainId);
-      
-    case ACLType.GENERIC_CONTRACT_CALL:
-      if (!contractAddress || !contractFunction) 
-        throw new Error("Contract address and function are required");
-      return genericContractCall(contractAddress, contractFunction, chainId);
+      return walletOnly(address, chainId);
       
     default:
       throw new Error("Invalid ACL type");
@@ -228,6 +140,7 @@ export async function uploadAsJson(
 ): Promise<FileUploadResponse> {
   // Ensure client is initialized
   const client = initializeGroveClient();
+  console.log(options);
   
   try {
     return await client.uploadAsJson(data, options);
@@ -390,6 +303,4 @@ export default {
   // Export ACL creation helpers directly
   immutable,
   lensAccountOnly,
-  walletAddressOnly,
-  genericContractCall
 };

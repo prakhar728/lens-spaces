@@ -72,13 +72,17 @@ export async function initializeStream(
   try {
     // Create mutable ACL for the streamer (only they can update)
     const updateACL = createACL(
-      ACLType.LENS_ACCOUNT, 
+      ACLType.WALLET_ADDRESS, 
       ChainId.TESTNET,
       userAddress
     );
     
+    console.log(updateACL);
+    
     // Upload initial manifest to Grove
     const response = await uploadAsJson(manifest, { acl: updateACL });
+    console.log(response);
+    
     return response.uri;
   } catch (error) {
     console.error("Error initializing stream:", error);
@@ -138,7 +142,7 @@ export async function updateStreamManifest(
     
     // Create ACL for updating
     const updateACL = createACL(
-      ACLType.LENS_ACCOUNT, 
+      ACLType.WALLET_ADDRESS, 
       ChainId.TESTNET,
       userAddress
     );
@@ -177,7 +181,7 @@ export async function endStream(
     
     // Create ACL for updating
     const updateACL = createACL(
-      ACLType.LENS_ACCOUNT, 
+      ACLType.WALLET_ADDRESS, 
       ChainId.TESTNET,
       userAddress
     );
@@ -244,7 +248,7 @@ export class StreamRecorder {
     userAddress: string,
     signer: Signer,
     options: StreamRecorderOptions = { chunkDuration: 3000 }
-  ) {
+  ) {  
     this.userAddress = userAddress;
     this.signer = signer;
     this.options = options;

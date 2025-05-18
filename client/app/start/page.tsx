@@ -9,6 +9,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { StreamRecorder } from "@/lib/lens/stream";
 import { fetchAccount } from "@lens-protocol/client/actions";
 import { getLensClient } from "@/lib/lens/client";
+import { useWalletClient } from "wagmi";
+import { signer } from "@/lib/lens/signer";
 
 export default function StartSpace() {
   const { toast } = useToast();
@@ -17,6 +19,7 @@ export default function StartSpace() {
   const [uploadStatus, setUploadStatus] = useState(0);
   const [account, setAccount] = useState<any>(null);
   const [streamUri, setStreamUri] = useState<string | null>(null);
+  const { data: walletClient } = useWalletClient();
 
   // Video preview reference
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -25,6 +28,10 @@ export default function StartSpace() {
   const recorderRef = useRef<StreamRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const lensClientRef = useRef<any>(null);
+
+  function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
 
   // Get authenticated account on component mount
   useEffect(() => {
@@ -43,11 +50,11 @@ export default function StartSpace() {
       setAccount(await account);
 
       // Store Lens client for signing
-      lensClientRef.current = client;
+      lensClientRef.current = signer;
     }
 
-    getAuthenticatedAccount();
-  }, []);
+    if (walletClient) getAuthenticatedAccount();
+  }, [walletClient]);
 
   // Start streaming process
   const startStream = async () => {
@@ -81,9 +88,11 @@ export default function StartSpace() {
       // Store stream reference
       streamRef.current = stream;
 
+      console.log(account);
+
       // Create stream recorder
       recorderRef.current = new StreamRecorder(
-        account.address,
+        account.owner,
         lensClientRef.current, // Lens client for signing
         { chunkDuration: 3000 } // Create a new chunk every 3 seconds
       );
@@ -107,12 +116,13 @@ export default function StartSpace() {
       // Initialize the stream
       const uri = await recorderRef.current.initializeStream(
         title,
-        account.username?.value || account.address
+        signer.address
       );
 
       // Store stream URI
       setStreamUri(uri);
 
+      await sleep(3000);
       // Start recording
       await recorderRef.current.startRecording(stream);
 

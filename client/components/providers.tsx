@@ -27,7 +27,7 @@ const wagmiConfig = createConfig(
 export const Providers = ({ children }: { children: JSX.Element }) => {
   const queryClient = new QueryClient();
   const publicClient = getPublicClient();
-
+  
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
       <WagmiProvider config={wagmiConfig}>
