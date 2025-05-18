@@ -20,6 +20,7 @@ export default function StartSpace() {
   const [account, setAccount] = useState<any>(null);
   const [streamUri, setStreamUri] = useState<string | null>(null);
   const { data: walletClient } = useWalletClient();
+  const [isDownloadMode, setIsDownloadMode] = useState(true);
 
   // Video preview reference
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -97,6 +98,30 @@ export default function StartSpace() {
         { chunkDuration: 3000 } // Create a new chunk every 3 seconds
       );
 
+      recorderRef.current.setDownloadMode(isDownloadMode);
+
+      recorderRef.current.onChunkDownloaded((index, blob) => {
+        // Create a download link
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `chunk-${index}-${Date.now()}.webm`;
+
+        // Trigger download
+        document.body.appendChild(a);
+        a.click();
+
+        // Clean up
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 100);
+
+        // Update progress
+        const progress = Math.min(95, Math.floor((index / (index + 5)) * 100));
+        setUploadStatus(progress);
+      });
+
       // Set up chunk upload callback to update progress
       recorderRef.current.onChunkUploaded((index, total) => {
         // Calculate upload progress (max 95%, reserve 5% for finalizing)
@@ -114,7 +139,7 @@ export default function StartSpace() {
       });
 
       console.log(signer.address);
-      
+
       // Initialize the stream
       const uri = await recorderRef.current.initializeStream(
         title,
@@ -310,6 +335,16 @@ export default function StartSpace() {
                 This ensures your content remains censorship-resistant and truly
                 yours.
               </p>
+
+              <Button
+                variant="outline"
+                onClick={() => setIsDownloadMode(!isDownloadMode)}
+                className="mb-4"
+              >
+                {isDownloadMode
+                  ? "Switch to Grove Upload"
+                  : "Switch to Local Download"}
+              </Button>
               {streamUri && (
                 <div className="mt-4 flex flex-col items-center">
                   <p className="mb-2 font-medium">Direct Link:</p>

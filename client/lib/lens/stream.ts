@@ -1,6 +1,6 @@
 /**
  * LensSpaces - Streaming Service
- * 
+ *
  * A specialized service for handling decentralized live streaming using Grove storage.
  * This library builds on top of the basic grove.ts and adds streaming-specific functionality.
  */
@@ -13,8 +13,8 @@ import {
   uploadAsJson,
   updateJson,
   resolveUri,
-  Signer
-} from '@/lib/lens/grove';
+  Signer,
+} from "@/lib/lens/grove";
 
 // Types
 export interface StreamChunk {
@@ -49,7 +49,10 @@ export interface StreamPlayerOptions {
 /**
  * Creates a new stream manifest
  */
-export function createStreamManifest(title: string, creator: string): StreamManifest {
+export function createStreamManifest(
+  title: string,
+  creator: string
+): StreamManifest {
   return {
     version: "1.0",
     title,
@@ -58,7 +61,7 @@ export function createStreamManifest(title: string, creator: string): StreamMani
     endedAt: null,
     chunkCount: 0,
     chunks: [],
-    status: "live"
+    status: "live",
   };
 }
 
@@ -72,17 +75,19 @@ export async function initializeStream(
   try {
     // Create mutable ACL for the streamer (only they can update)
     const updateACL = createACL(
-      ACLType.WALLET_ADDRESS, 
+      ACLType.WALLET_ADDRESS,
       ChainId.TESTNET,
       userAddress
     );
-    
+
     console.log(updateACL);
-    
+
     // Upload initial manifest to Grove
     const response = await uploadAsJson(manifest, { acl: updateACL });
-    console.log(`https://api.grove.storage/status/${response.resource.storageKey}`);
-    
+    console.log(
+      `https://api.grove.storage/status/${response.resource.storageKey}`
+    );
+
     return response.uri;
   } catch (error) {
     console.error("Error initializing stream:", error);
@@ -93,18 +98,19 @@ export async function initializeStream(
 /**
  * Uploads a media chunk to Grove
  */
-export async function uploadStreamChunk(chunk: Blob, index: number): Promise<string> {
+export async function uploadStreamChunk(
+  chunk: Blob,
+  index: number
+): Promise<string> {
   try {
     // Create immutable ACL for chunks (anyone can view)
     const viewACL = createACL(ACLType.IMMUTABLE, ChainId.TESTNET);
-    
+
     // Create a file from the chunk
-    const file = new File(
-      [chunk], 
-      `chunk-${index}-${Date.now()}.webm`, 
-      { type: "video/webm" }
-    );
-    
+    const file = new File([chunk], `chunk-${index}-${Date.now()}.webm`, {
+      type: "video/webm",
+    });
+
     // Upload file to Grove
     const response = await uploadFile(file, { acl: viewACL });
     return response.uri;
@@ -135,26 +141,21 @@ export async function updateStreamManifest(
         {
           uri: chunkUri,
           timestamp: Date.now(),
-          index
-        }
-      ]
+          index,
+        },
+      ],
     };
-    
+
     // Create ACL for updating
     const updateACL = createACL(
-      ACLType.WALLET_ADDRESS, 
+      ACLType.WALLET_ADDRESS,
       ChainId.TESTNET,
       userAddress
     );
-    
+
     // Update manifest in Grove
-    await updateJson(
-      streamUri,
-      updatedManifest,
-      signer,
-      { acl: updateACL }
-    );
-    
+    await updateJson(streamUri, updatedManifest, signer, { acl: updateACL });
+
     return updatedManifest;
   } catch (error) {
     console.error("Error updating stream manifest:", error);
@@ -176,24 +177,19 @@ export async function endStream(
     const finalizedManifest: StreamManifest = {
       ...manifest,
       endedAt: Date.now(),
-      status: "ended"
+      status: "ended",
     };
-    
+
     // Create ACL for updating
     const updateACL = createACL(
-      ACLType.WALLET_ADDRESS, 
+      ACLType.WALLET_ADDRESS,
       ChainId.TESTNET,
       userAddress
     );
-    
+
     // Update manifest in Grove
-    await updateJson(
-      streamUri,
-      finalizedManifest,
-      signer,
-      { acl: updateACL }
-    );
-    
+    await updateJson(streamUri, finalizedManifest, signer, { acl: updateACL });
+
     return finalizedManifest;
   } catch (error) {
     console.error("Error ending stream:", error);
@@ -204,18 +200,20 @@ export async function endStream(
 /**
  * Loads a stream manifest from Grove
  */
-export async function loadStreamManifest(streamUri: string): Promise<StreamManifest> {
+export async function loadStreamManifest(
+  streamUri: string
+): Promise<StreamManifest> {
   try {
     // Resolve Grove URI to get URL
     const manifestUrl = resolveUri(streamUri);
-    
+
     // Fetch manifest
     const response = await fetch(manifestUrl);
-    
+
     if (!response.ok) {
       throw new Error(`Failed to fetch stream manifest: ${response.status}`);
     }
-    
+
     return await response.json();
   } catch (error) {
     console.error("Error loading stream manifest:", error);
@@ -239,37 +237,65 @@ export class StreamRecorder {
   private isRecording: boolean = false;
   private uploadQueue: Blob[] = [];
   private isUploading: boolean = false;
-  
+  private downloadMode: boolean = false;
+  private onChunkDownloadedCallback:
+    | ((index: number, blob: Blob) => void)
+    | null = null;
+
   // Events
-  private onChunkUploadedCallback: ((index: number, total: number) => void) | null = null;
+  private onChunkUploadedCallback:
+    | ((index: number, total: number) => void)
+    | null = null;
   private onErrorCallback: ((error: Error) => void) | null = null;
-  
+
   constructor(
     userAddress: string,
     signer: Signer,
     options: StreamRecorderOptions = { chunkDuration: 3000 }
-  ) {  
+  ) {
     this.userAddress = userAddress;
     this.signer = signer;
     this.options = options;
   }
-  
-  public onChunkUploaded(callback: (index: number, total: number) => void): void {
+
+  public onChunkUploaded(
+    callback: (index: number, total: number) => void
+  ): void {
     this.onChunkUploadedCallback = callback;
   }
-  
+
   public onError(callback: (error: Error) => void): void {
     this.onErrorCallback = callback;
   }
-  
-  public async initializeStream(title: string, creator: string): Promise<string> {
+
+  /**
+   * Enables or disables download mode for debugging
+   * When enabled, chunks will be downloaded locally instead of uploaded to Grove
+   */
+  public setDownloadMode(enabled: boolean): void {
+    this.downloadMode = enabled;
+  }
+
+  /**
+   * Sets callback for when a chunk is ready for download
+   */
+  public onChunkDownloaded(
+    callback: (index: number, blob: Blob) => void
+  ): void {
+    this.onChunkDownloadedCallback = callback;
+  }
+
+  public async initializeStream(
+    title: string,
+    creator: string
+  ): Promise<string> {
     try {
       // Create initial manifest
       this.manifest = createStreamManifest(title, creator);
-      
+
       // Upload manifest
       this.streamUri = await initializeStream(this.manifest, this.userAddress);
-      
+
       return this.streamUri;
     } catch (error) {
       console.error("Error initializing stream:", error);
@@ -277,30 +303,30 @@ export class StreamRecorder {
       throw error;
     }
   }
-  
+
   public async startRecording(mediaStream: MediaStream): Promise<void> {
     if (this.isRecording) {
       return;
     }
-    
+
     if (!this.streamUri || !this.manifest) {
       throw new Error("Stream not initialized. Call initializeStream first");
     }
-    
+
     this.stream = mediaStream;
     this.isRecording = true;
-    
+
     try {
       // Determine mime type
       const mimeTypes = [
         this.options.mimeType, // Try user-provided mime type first
-        'video/webm;codecs=vp9,opus',
-        'video/webm;codecs=vp8,opus',
-        'video/webm'
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm",
       ].filter(Boolean) as string[];
-      
+
       let selectedMimeType = null;
-      
+
       // Find the first supported mime type
       for (const mimeType of mimeTypes) {
         if (MediaRecorder.isTypeSupported(mimeType)) {
@@ -308,28 +334,28 @@ export class StreamRecorder {
           break;
         }
       }
-      
+
       if (!selectedMimeType) {
         throw new Error("No supported mime types found for recording");
       }
-      
+
       // Create media recorder
-      this.mediaRecorder = new MediaRecorder(mediaStream, { 
-        mimeType: selectedMimeType 
+      this.mediaRecorder = new MediaRecorder(mediaStream, {
+        mimeType: selectedMimeType,
       });
-      
+
       // Handle data available
       this.mediaRecorder.ondataavailable = this.handleDataAvailable.bind(this);
-      
+
       // Handle errors
       this.mediaRecorder.onerror = (event) => {
         console.error("MediaRecorder error:", event);
         this.handleError(new Error("MediaRecorder error"));
       };
-      
+
       // Start recording with specified chunk interval
       this.mediaRecorder.start(this.options.chunkDuration);
-      
+
       console.log("Recording started with mime type:", selectedMimeType);
     } catch (error) {
       console.error("Error starting recording:", error);
@@ -338,26 +364,26 @@ export class StreamRecorder {
       throw error;
     }
   }
-  
+
   public async stopRecording(): Promise<void> {
     if (!this.isRecording) {
       return;
     }
-    
+
     try {
       // Stop media recorder
-      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+      if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
         this.mediaRecorder.stop();
       }
-      
+
       // Stop media tracks
       if (this.stream) {
-        this.stream.getTracks().forEach(track => track.stop());
+        this.stream.getTracks().forEach((track) => track.stop());
       }
-      
+
       // Wait for any pending uploads to complete
       await this.waitForUploads();
-      
+
       // Finalize stream if initialized
       if (this.streamUri && this.manifest) {
         // Update manifest to indicate stream has ended
@@ -368,7 +394,7 @@ export class StreamRecorder {
           this.signer
         );
       }
-      
+
       this.isRecording = false;
       console.log("Recording stopped and stream finalized");
     } catch (error) {
@@ -377,42 +403,86 @@ export class StreamRecorder {
       throw error;
     }
   }
-  
+
   private handleDataAvailable(event: BlobEvent): void {
     if (event.data && event.data.size > 0) {
       // Add to chunks
       this.chunks.push(event.data);
-      
-      // Queue for upload
-      this.uploadQueue.push(event.data);
-      
-      // Start upload process if not already running
-      if (!this.isUploading) {
-        this.processUploadQueue();
+
+      if (this.downloadMode) {
+        // If in download mode, trigger download callback
+        const chunkIndex = this.chunkCounter++;
+
+        if (this.onChunkDownloadedCallback) {
+          this.onChunkDownloadedCallback(chunkIndex, event.data);
+        } else {
+          // Default download behavior if no callback
+          this.downloadChunk(event.data, chunkIndex);
+        }
+      } else {
+        // Normal upload behavior
+        // Queue for upload
+        this.uploadQueue.push(event.data);
+
+        // Start upload process if not already running
+        if (!this.isUploading) {
+          this.processUploadQueue();
+        }
       }
     }
   }
-  
+
+  /**
+   * Downloads a chunk to the user's device
+   */
+  private downloadChunk(chunk: Blob, index: number): void {
+    try {
+      // Create a download link
+      const url = URL.createObjectURL(chunk);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `chunk-${index}-${Date.now()}.webm`;
+
+      // Trigger download
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 100);
+
+      // Trigger callback
+      if (this.onChunkUploadedCallback) {
+        this.onChunkUploadedCallback(index, this.chunks.length);
+      }
+    } catch (error) {
+      console.error("Error downloading chunk:", error);
+      this.handleError(new Error("Failed to download chunk"));
+    }
+  }
+
   private async processUploadQueue(): Promise<void> {
     if (this.isUploading || this.uploadQueue.length === 0) {
       return;
     }
-    
+
     this.isUploading = true;
-    
+
     try {
       // Get next chunk from queue
       const chunk = this.uploadQueue.shift();
-      
+
       if (!chunk) {
         this.isUploading = false;
         return;
       }
-      
+
       // Upload chunk
       const chunkIndex = this.chunkCounter++;
       const chunkUri = await uploadStreamChunk(chunk, chunkIndex);
-      
+
       // Update manifest
       if (this.streamUri && this.manifest) {
         this.manifest = await updateStreamManifest(
@@ -423,7 +493,7 @@ export class StreamRecorder {
           this.userAddress,
           this.signer
         );
-        
+
         // Trigger callback
         if (this.onChunkUploadedCallback) {
           this.onChunkUploadedCallback(chunkIndex, this.chunks.length);
@@ -434,14 +504,14 @@ export class StreamRecorder {
       // Continue processing queue even on error
     } finally {
       this.isUploading = false;
-      
+
       // Process next item if queue is not empty
       if (this.uploadQueue.length > 0) {
         this.processUploadQueue();
       }
     }
   }
-  
+
   private async waitForUploads(): Promise<void> {
     // Wait for all uploads to complete
     return new Promise<void>((resolve) => {
@@ -452,11 +522,11 @@ export class StreamRecorder {
           setTimeout(checkUploads, 100);
         }
       };
-      
+
       checkUploads();
     });
   }
-  
+
   private handleError(error: Error): void {
     if (this.onErrorCallback) {
       this.onErrorCallback(error);
@@ -479,59 +549,61 @@ export class StreamPlayer {
   private lastProcessedChunkIndex: number = -1;
   private pendingChunks: ArrayBuffer[] = [];
   private isBufferUpdating: boolean = false;
-  
+
   // Events
-  private onManifestLoadedCallback: ((manifest: StreamManifest) => void) | null = null;
+  private onManifestLoadedCallback:
+    | ((manifest: StreamManifest) => void)
+    | null = null;
   private onStreamEndedCallback: (() => void) | null = null;
   private onErrorCallback: ((error: Error) => void) | null = null;
-  
+
   constructor(
     videoElement: HTMLVideoElement,
     streamUri: string,
-    options: StreamPlayerOptions = { 
-      autoPlay: true, 
-      muted: true, 
+    options: StreamPlayerOptions = {
+      autoPlay: true,
+      muted: true,
       controls: true,
-      pollingInterval: 2000
+      pollingInterval: 2000,
     }
   ) {
     this.videoElement = videoElement;
     this.streamUri = streamUri;
     this.options = options;
-    
+
     // Set video element properties
     this.videoElement.muted = options.muted ?? true;
     this.videoElement.controls = options.controls ?? true;
   }
-  
+
   public onManifestLoaded(callback: (manifest: StreamManifest) => void): void {
     this.onManifestLoadedCallback = callback;
   }
-  
+
   public onStreamEnded(callback: () => void): void {
     this.onStreamEndedCallback = callback;
   }
-  
+
   public onError(callback: (error: Error) => void): void {
     this.onErrorCallback = callback;
   }
-  
+
   public async initialize(): Promise<void> {
     try {
       // Load initial manifest
       this.manifest = await loadStreamManifest(this.streamUri);
-      
+
       // Trigger callback
       if (this.onManifestLoadedCallback) {
         this.onManifestLoadedCallback(this.manifest);
       }
-      
+
       // Setup media source
       await this.setupMediaSource();
-      
+
       // Start polling for manifest updates
       this.startPolling();
-      
+
       // Load initial chunks
       await this.loadInitialChunks();
     } catch (error) {
@@ -540,73 +612,74 @@ export class StreamPlayer {
       throw error;
     }
   }
-  
+
   public stop(): void {
     // Stop polling
     this.stopPolling();
-    
+
     // Pause video
     if (this.videoElement) {
       this.videoElement.pause();
     }
-    
+
     // Close media source
-    if (this.mediaSource && this.mediaSource.readyState === 'open') {
+    if (this.mediaSource && this.mediaSource.readyState === "open") {
       try {
         this.mediaSource.endOfStream();
       } catch (error) {
         console.error("Error ending media source stream:", error);
       }
     }
-    
+
     this.isPlaying = false;
   }
-  
+
   public getIsPlaying(): boolean {
     return this.isPlaying;
   }
-  
+
   private async setupMediaSource(): Promise<void> {
     return new Promise<void>((resolve, reject) => {
       try {
         // Create new MediaSource
         this.mediaSource = new MediaSource();
-        
+
         // Set video source to MediaSource URL
         this.videoElement.src = URL.createObjectURL(this.mediaSource);
-        
+
         // Setup source buffer when MediaSource opens
-        this.mediaSource.addEventListener('sourceopen', () => {
+        this.mediaSource.addEventListener("sourceopen", () => {
           try {
             // Find supported codec
             const mimeTypes = [
-              'video/webm;codecs=vp9,opus',
-              'video/webm;codecs=vp8,opus',
-              'video/webm'
+              "video/webm;codecs=vp9,opus",
+              "video/webm;codecs=vp8,opus",
+              "video/webm",
             ];
-            
+
             let supportedMimeType: string | null = null;
-            
+
             for (const mimeType of mimeTypes) {
               if (MediaSource.isTypeSupported(mimeType)) {
                 supportedMimeType = mimeType;
                 break;
               }
             }
-            
+
             if (!supportedMimeType) {
               throw new Error("No supported codec found for stream playback");
             }
-            
+
             // Create source buffer with supported codec
-            this.sourceBuffer = this.mediaSource!.addSourceBuffer(supportedMimeType);
-            
+            this.sourceBuffer =
+              this.mediaSource!.addSourceBuffer(supportedMimeType);
+
             // Handle buffer updates
-            this.sourceBuffer.addEventListener('updateend', () => {
+            this.sourceBuffer.addEventListener("updateend", () => {
               this.isBufferUpdating = false;
               this.processNextPendingChunk();
             });
-            
+
             this.isPlaying = true;
             resolve();
           } catch (error) {
@@ -620,36 +693,36 @@ export class StreamPlayer {
       }
     });
   }
-  
+
   private startPolling(): void {
     // Clear existing interval if any
     this.stopPolling();
-    
+
     // Poll for manifest updates at specified interval
     this.pollingInterval = window.setInterval(async () => {
       try {
         // Load latest manifest
         const latestManifest = await loadStreamManifest(this.streamUri);
-        
+
         // Update manifest if there are changes
         if (latestManifest.chunkCount > (this.manifest?.chunkCount || 0)) {
           this.manifest = latestManifest;
-          
+
           // Load any new chunks
           await this.loadNewChunks();
         }
-        
+
         // If stream has ended, stop polling
         if (latestManifest.status === "ended") {
           this.stopPolling();
-          
+
           // Trigger callback
           if (this.onStreamEndedCallback) {
             this.onStreamEndedCallback();
           }
-          
+
           // End the stream
-          if (this.mediaSource && this.mediaSource.readyState === 'open') {
+          if (this.mediaSource && this.mediaSource.readyState === "open") {
             try {
               this.mediaSource.endOfStream();
             } catch (error) {
@@ -662,26 +735,26 @@ export class StreamPlayer {
       }
     }, this.options.pollingInterval || 2000);
   }
-  
+
   private stopPolling(): void {
     if (this.pollingInterval !== null) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
   }
-  
+
   private async loadInitialChunks(): Promise<void> {
     if (!this.manifest || this.manifest.chunks.length === 0) {
       return;
     }
-    
+
     // Load first few chunks (e.g., the first 2 chunks)
     const initialChunksToLoad = Math.min(2, this.manifest.chunks.length);
-    
+
     for (let i = 0; i < initialChunksToLoad; i++) {
       await this.loadChunk(this.manifest.chunks[i]);
     }
-    
+
     // Start video playback if autoPlay is enabled
     if (this.options.autoPlay && this.videoElement.paused) {
       try {
@@ -691,89 +764,92 @@ export class StreamPlayer {
       }
     }
   }
-  
+
   private async loadNewChunks(): Promise<void> {
     if (!this.manifest) {
       return;
     }
-    
+
     // Find chunks that haven't been processed yet
     const newChunks = this.manifest.chunks.filter(
-      chunk => chunk.index > this.lastProcessedChunkIndex
+      (chunk) => chunk.index > this.lastProcessedChunkIndex
     );
-    
+
     // Load each new chunk
     for (const chunk of newChunks) {
       await this.loadChunk(chunk);
     }
   }
-  
+
   private async loadChunk(chunk: StreamChunk): Promise<void> {
     try {
       // Skip if we've already processed this chunk
       if (chunk.index <= this.lastProcessedChunkIndex) {
         return;
       }
-      
+
       // Resolve chunk URI to URL
       const chunkUrl = resolveUri(chunk.uri);
-      
+
       // Fetch chunk data
       const response = await fetch(chunkUrl);
-      
+
       if (!response.ok) {
         throw new Error(`Failed to fetch chunk: ${chunk.index}`);
       }
-      
+
       // Get chunk data as ArrayBuffer
       const chunkData = await response.arrayBuffer();
-      
+
       // Add to pending chunks
       this.pendingChunks.push(chunkData);
-      
+
       // Process chunk if possible
       this.processNextPendingChunk();
-      
+
       // Update last processed chunk
-      this.lastProcessedChunkIndex = Math.max(this.lastProcessedChunkIndex, chunk.index);
+      this.lastProcessedChunkIndex = Math.max(
+        this.lastProcessedChunkIndex,
+        chunk.index
+      );
     } catch (error) {
       console.error(`Error loading chunk ${chunk.index}:`, error);
       this.handleError(new Error(`Failed to load chunk ${chunk.index}`));
     }
   }
-  
+
   private processNextPendingChunk(): void {
     // Skip if buffer is updating or no pending chunks
     if (
-      this.isBufferUpdating || 
-      this.pendingChunks.length === 0 || 
+      this.isBufferUpdating ||
+      this.pendingChunks.length === 0 ||
       !this.sourceBuffer
     ) {
       return;
     }
-    
+
     try {
       // Get next chunk
       const nextChunk = this.pendingChunks.shift();
-      
+
       if (!nextChunk) {
         return;
       }
-      
+
       // Mark buffer as updating
       this.isBufferUpdating = true;
-      
+
       // Append chunk to source buffer
       this.sourceBuffer.appendBuffer(nextChunk);
     } catch (error) {
       console.error("Error appending chunk to buffer:", error);
       this.isBufferUpdating = false;
-      
+
       // Try next chunk on error
       this.processNextPendingChunk();
     }
   }
-  
+
   private handleError(error: Error): void {
     if (this.onErrorCallback) {
       this.onErrorCallback(error);
@@ -790,5 +866,5 @@ export default {
   endStream,
   loadStreamManifest,
   StreamRecorder,
-  StreamPlayer
+  StreamPlayer,
 };
