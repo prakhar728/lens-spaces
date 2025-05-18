@@ -66,10 +66,12 @@ export default function SpacePage() {
   const pollingRef = useRef<NodeJS.Timer | null>(null);
   const lastChunkIndexRef = useRef(-1);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
+  const [streamUri, setStreamUri] = useState("");
 
   async function initializeStreamPlayback() {
     try {
       const streamUri = decodeURIComponent(id as string);
+      setStreamUri(streamUri);
       setIsLoading(true);
 
       const storageClient = initializeGroveClient();
@@ -92,8 +94,6 @@ export default function SpacePage() {
 
       console.log(data);
 
-      console.log(videoRef.current);
-
       if (!videoRef.current) return;
       const mediaSource = new MediaSource();
       mediaSourceRef.current = mediaSource;
@@ -108,9 +108,16 @@ export default function SpacePage() {
           processQueue();
         });
 
-        for (const chunk of data.chunks) {
+        for (let i = 0; i < data.chunks.length; i++) {
+          const chunk = data.chunks[i];
+
           await fetchAndAppendChunk(chunk.uri);
           lastChunkIndexRef.current = chunk.index;
+
+          if (i === 0) {
+            // wait 20 seconds after the first chunk
+            await new Promise((resolve) => setTimeout(resolve, 20000));
+          }
         }
 
         if (data.status === "live") {
@@ -157,26 +164,57 @@ export default function SpacePage() {
 
   async function fetchAndAppendChunk(uri: string) {
     const storageClient = initializeGroveClient();
-
     const url = storageClient.resolve(uri);
-    console.log(uri);
+    console.log(url);
 
     const res = await fetch(url);
     if (!res.ok) return;
+
     const data = await res.arrayBuffer();
+
+    if (
+      !mediaSourceRef.current ||
+      mediaSourceRef.current.readyState !== "open"
+    ) {
+      console.warn("Skipped appending chunk: media source is not open.");
+      return;
+    }
+
     fetchQueue.push(data);
     processQueue();
   }
 
+  console.log(mediaSourceRef.current);
+
   function processQueue() {
+    const sourceBuffer = sourceBufferRef.current;
+    const mediaSource = mediaSourceRef.current;
+
+    if (!sourceBuffer || !mediaSource) return;
+
+    console.log(sourceBuffer.updating);
+    console.log(mediaSource.readyState !== "open");
+    console.log(fetchQueue.length === 0);
+
     if (
-      !sourceBufferRef.current ||
-      sourceBufferRef.current.updating ||
-      !fetchQueue.length
-    )
+      sourceBuffer.updating ||
+      mediaSource.readyState !== "open" ||
+      fetchQueue.length === 0
+    ) {
+      // Try again shortly
+      console.log("Returning");
+
       return;
+    }
+
     const buffer = fetchQueue.shift();
-    if (buffer) sourceBufferRef.current.appendBuffer(buffer);
+    if (buffer) {
+      try {
+        sourceBuffer.appendBuffer(buffer);
+      } catch (err) {
+        console.error("appendBuffer failed:", err);
+      }
+    }
   }
 
   useEffect(() => {
