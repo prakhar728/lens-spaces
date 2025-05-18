@@ -172,12 +172,10 @@ export default function SpacePage() {
               mediaSource
             );
 
-            if (manifest.status === "live") {
-              pollingRef.current = setInterval(
-                () => pollManifestForNewChunks(streamUri),
-                20000
-              );
-            }
+            pollingRef.current = setInterval(
+              () => pollManifestForNewChunks(streamUri),
+              5000 // or shorter interval if needed
+            );
 
             setIsLoading(false);
           } catch (err) {
@@ -238,15 +236,24 @@ export default function SpacePage() {
   }
 
   async function pollManifestForNewChunks(streamUri: string) {
+    console.log("Polling");
+
     try {
       const storageClient = initializeGroveClient();
       const updatedManifestUrl = storageClient.resolve(streamUri);
-      const response = await fetch(updatedManifestUrl);
+      console.log(updatedManifestUrl);
+
+      const response = await fetch(`${updatedManifestUrl}?t=${Date.now()}`, {
+        cache: "no-store",
+      });
       const updatedManifest: StreamManifest = await response.json();
+      console.log(updatedManifest);
 
       const newChunks = updatedManifest.chunks.filter(
         (c) => c.index > lastChunkIndexRef.current
       );
+
+      console.log("Found new chunks:", newChunks);
 
       for (const chunk of newChunks) {
         if (
