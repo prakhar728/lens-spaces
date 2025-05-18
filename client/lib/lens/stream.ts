@@ -251,7 +251,7 @@ export class StreamRecorder {
   constructor(
     userAddress: string,
     signer: Signer,
-    options: StreamRecorderOptions = { chunkDuration: 3000 }
+    options: StreamRecorderOptions = { chunkDuration: 30000 }
   ) {
     this.userAddress = userAddress;
     this.signer = signer;

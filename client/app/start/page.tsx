@@ -95,7 +95,7 @@ export default function StartSpace() {
       recorderRef.current = new StreamRecorder(
         signer.address,
         lensClientRef.current, // Lens client for signing
-        { chunkDuration: 3000 } // Create a new chunk every 3 seconds
+        { chunkDuration: 30000 } // Create a new chunk every 3 seconds
       );
 
       recorderRef.current.setDownloadMode(isDownloadMode);
