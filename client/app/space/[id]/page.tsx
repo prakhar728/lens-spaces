@@ -8,10 +8,10 @@ import { Badge } from "@/components/ui/badge";
 import { Heart, MessageSquare, Share2, ThumbsUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
-import { StreamPlayer, StreamManifest } from "@/lib/lens/stream";
+import { StreamManifest } from "@/lib/lens/stream";
 import { useParams } from "next/navigation";
+import { initializeGroveClient } from "@/lib/lens/grove";
 
-// Chat message type
 interface ChatMessage {
   id: string;
   sender: string;
@@ -19,7 +19,6 @@ interface ChatMessage {
   timestamp: number;
 }
 
-// Default space info while loading
 const DEFAULT_SPACE = {
   id: "loading",
   title: "Loading Stream...",
@@ -32,18 +31,14 @@ const DEFAULT_SPACE = {
 export default function SpacePage() {
   const { toast } = useToast();
   const [message, setMessage] = useState("");
-  const [reactions, setReactions] = useState({
-    likes: 42,
-    hearts: 18,
-  });
+  const [reactions, setReactions] = useState({ likes: 42, hearts: 18 });
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [space, setSpace] = useState(DEFAULT_SPACE);
   const [manifest, setManifest] = useState<StreamManifest | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
-  const {id} = useParams()
+  const { id } = useParams();
 
-  // Chat messages state
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -65,92 +60,129 @@ export default function SpacePage() {
     },
   ]);
 
-  // Refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const playerRef = useRef<StreamPlayer | null>(null);
+  const sourceBufferRef = useRef<SourceBuffer | null>(null);
+  const mediaSourceRef = useRef<MediaSource | null>(null);
+  const pollingRef = useRef<NodeJS.Timer | null>(null);
+  const lastChunkIndexRef = useRef(-1);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Decode the stream URI from the URL parameter
-  const streamUri = decodeURIComponent(id as string);
-  
-  // Initialize player and load stream
   useEffect(() => {
-    async function initializePlayer() {
-      if (!videoRef.current) return;
+    if (!id) return;
 
+    const streamUri = decodeURIComponent(id as string);
+    setIsLoading(true);
+
+    async function initializeStreamPlayback() {
       try {
-        setIsLoading(true);
+        const storageClient = initializeGroveClient();
+        const manifestUrl = storageClient.resolve(streamUri);
+        const response = await fetch(manifestUrl);
+        if (!response.ok) throw new Error("Failed to fetch manifest");
 
-        // Create stream player
-        const player = new StreamPlayer(videoRef.current, streamUri, {
-          autoPlay: true,
-          muted: true,
-          controls: true,
-          pollingInterval: 2000,
+        const data: StreamManifest = await response.json();
+        setManifest(data);
+        setSpace({
+          id: streamUri,
+          title: data.title,
+          creator: data.creator,
+          creatorAvatar: "/placeholder.svg?height=40&width=40",
+          viewers: Math.floor(Math.random() * 50) + 5,
+          isLive: data.status === "live",
         });
+        setViewerCount(Math.floor(Math.random() * 50) + 5);
 
-        // Set up manifest loaded callback
-        player.onManifestLoaded((loadedManifest) => {
-          setManifest(loadedManifest);
+        if (!videoRef.current) return;
+        const mediaSource = new MediaSource();
+        mediaSourceRef.current = mediaSource;
+        videoRef.current.src = URL.createObjectURL(mediaSource);
 
-          // Update space info from manifest
-          setSpace({
-            id: streamUri,
-            title: loadedManifest.title,
-            creator: loadedManifest.creator,
-            creatorAvatar: "/placeholder.svg?height=40&width=40", // Default avatar
-            viewers: Math.floor(Math.random() * 50) + 5, // Simulate viewer count
-            isLive: loadedManifest.status === "live",
+        mediaSource.addEventListener("sourceopen", async () => {
+          const mimeType = "video/webm;codecs=vp8,opus";
+          const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
+          sourceBufferRef.current = sourceBuffer;
+
+          sourceBuffer.addEventListener("updateend", () => {
+            processQueue();
           });
 
-          // Set viewer count
-          setViewerCount(Math.floor(Math.random() * 50) + 5);
+          for (const chunk of data.chunks) {
+            await fetchAndAppendChunk(chunk.uri);
+            lastChunkIndexRef.current = chunk.index;
+          }
+
+          if (data.status === "live") {
+            pollingRef.current = setInterval(pollManifestForNewChunks, 2000);
+          } else {
+            mediaSource.endOfStream();
+          }
         });
-
-        // Set up stream ended callback
-        player.onStreamEnded(() => {
-          // Update space status when stream ends
-          setSpace((prev) => ({
-            ...prev,
-            isLive: false,
-          }));
-
-          toast({
-            title: "Stream Ended",
-            description: "The stream has ended",
-          });
-        });
-
-        // Set up error callback
-        player.onError((playerError) => {
-          setError(playerError.message);
-          console.error("Player error:", playerError);
-        });
-
-        // Initialize player
-        await player.initialize();
-
-        // Store player reference
-        playerRef.current = player;
-      } catch (error) {
-        console.error("Error initializing player:", error);
-        setError("Failed to load the stream. Please try again later.");
+      } catch (err) {
+        console.error("Stream error:", err);
+        setError("Unable to load stream");
       } finally {
         setIsLoading(false);
       }
     }
 
-    initializePlayer();
+    async function pollManifestForNewChunks() {
+      if (!manifest) return;
+      const storageClient = initializeGroveClient();
 
-    // Cleanup on unmount
-    return () => {
-      if (playerRef.current) {
-        playerRef.current.stop();
+      const updatedManifestUrl = storageClient.resolve(streamUri);
+      const response = await fetch(updatedManifestUrl);
+      const updatedManifest: StreamManifest = await response.json();
+
+      const newChunks = updatedManifest.chunks.filter(
+        (c) => c.index > lastChunkIndexRef.current
+      );
+
+      for (const chunk of newChunks) {
+        await fetchAndAppendChunk(chunk.uri);
+        lastChunkIndexRef.current = chunk.index;
       }
-    };
-  }, [streamUri]);
 
-  // Auto-scroll chat to bottom when new messages arrive
+      if (updatedManifest.status === "ended") {
+        clearInterval(pollingRef.current!);
+        mediaSourceRef.current?.endOfStream();
+        setSpace((prev) => ({ ...prev, isLive: false }));
+        toast({ title: "Stream Ended", description: "The stream has ended" });
+      }
+    }
+
+    const fetchQueue: Array<ArrayBuffer> = [];
+    let isAppending = false;
+
+    async function fetchAndAppendChunk(uri: string) {
+      const storageClient = initializeGroveClient();
+
+      const url = storageClient.resolve(uri);
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.arrayBuffer();
+      fetchQueue.push(data);
+      processQueue();
+    }
+
+    function processQueue() {
+      if (
+        !sourceBufferRef.current ||
+        sourceBufferRef.current.updating ||
+        !fetchQueue.length
+      )
+        return;
+      const buffer = fetchQueue.shift();
+      if (buffer) sourceBufferRef.current.appendBuffer(buffer);
+    }
+
+    initializeStreamPlayback();
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+      if (videoRef.current) videoRef.current.src = "";
+    };
+  }, [id]);
+
   useEffect(() => {
     if (chatContainerRef.current) {
       chatContainerRef.current.scrollTop =
@@ -158,13 +190,8 @@ export default function SpacePage() {
     }
   }, [chatMessages]);
 
-  // Handle reaction
   const handleReaction = (type: "likes" | "hearts") => {
-    setReactions((prev) => ({
-      ...prev,
-      [type]: prev[type] + 1,
-    }));
-
+    setReactions((prev) => ({ ...prev, [type]: prev[type] + 1 }));
     toast({
       title: "Reaction Sent",
       description: `Your ${
@@ -173,37 +200,22 @@ export default function SpacePage() {
     });
   };
 
-  // Handle sending a chat message
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!message) return;
-
-    // In a real app, this would send the message to a backend
-    const newMessage: ChatMessage = {
-      id: Date.now().toString(),
-      sender: "lens/you", // Replace with actual user handle
-      message,
-      timestamp: Date.now(),
-    };
-
-    // Add to local chat
-    setChatMessages((prev) => [...prev, newMessage]);
-
-    // Clear input
+    setChatMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        sender: "lens/you",
+        message,
+        timestamp: Date.now(),
+      },
+    ]);
     setMessage("");
   };
 
-  // Format the sender's name (extract from lens/username format)
-  const formatSender = (sender: string) => {
-    if (sender.startsWith("lens/")) {
-      return sender.split("/")[1];
-    }
-    return sender;
-  };
-
-  // Handle sharing the stream
   const handleShare = () => {
-    // Copy to clipboard
     navigator.clipboard.writeText(window.location.href).then(() => {
       toast({
         title: "Link Copied",
@@ -217,9 +229,7 @@ export default function SpacePage() {
       <Navbar showWalletConnect />
       <div className="container max-w-6xl mx-auto mt-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Content - Video Player and Info */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Video Player */}
             <Card className="overflow-hidden shadow-soft">
               <div className="aspect-video bg-black flex items-center justify-center text-white relative">
                 {isLoading ? (
@@ -239,29 +249,24 @@ export default function SpacePage() {
                     </Button>
                   </div>
                 ) : (
-                  <>
-                    <video
-                      ref={videoRef}
-                      className="w-full h-full object-cover"
-                      playsInline
-                      controls
-                    />
-
-                    {/* Status indicator */}
-                    {space.isLive && (
-                      <div className="absolute top-4 left-4">
-                        <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full">
-                          <div className="animate-pulse text-red-500">●</div>
-                          <span className="text-sm font-medium">LIVE</span>
-                        </div>
-                      </div>
-                    )}
-                  </>
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    controls
+                  />
+                )}
+                {space.isLive && !isLoading && !error && (
+                  <div className="absolute top-4 left-4">
+                    <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full">
+                      <div className="animate-pulse text-red-500">●</div>
+                      <span className="text-sm font-medium">LIVE</span>
+                    </div>
+                  </div>
                 )}
               </div>
             </Card>
 
-            {/* Stream Info */}
             <Card className="shadow-soft">
               <CardContent className="pt-6">
                 <div className="flex items-start justify-between">
@@ -272,7 +277,7 @@ export default function SpacePage() {
                         alt={space.creator}
                       />
                       <AvatarFallback>
-                        {formatSender(space.creator)[0]?.toUpperCase()}
+                        {space.creator[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -317,24 +322,26 @@ export default function SpacePage() {
                     className="flex-1 rounded-full shadow-soft"
                     onClick={() => handleReaction("likes")}
                   >
-                    <ThumbsUp className="mr-2 h-4 w-4" /> {reactions.likes}
+                    {" "}
+                    <ThumbsUp className="mr-2 h-4 w-4" /> {reactions.likes}{" "}
                   </Button>
                   <Button
                     variant="outline"
                     className="flex-1 rounded-full shadow-soft"
                     onClick={() => handleReaction("hearts")}
                   >
-                    <Heart className="mr-2 h-4 w-4" /> {reactions.hearts}
+                    {" "}
+                    <Heart className="mr-2 h-4 w-4" /> {reactions.hearts}{" "}
                   </Button>
                   <Button className="flex-1 rounded-full shadow-soft">
-                    Tip Creator
+                    {" "}
+                    Tip Creator{" "}
                   </Button>
                 </div>
               </CardContent>
             </Card>
           </div>
 
-          {/* Sidebar - Chat */}
           <div className="space-y-6">
             <Card className="shadow-soft h-[calc(100vh-200px)] flex flex-col">
               <CardContent className="pt-6 flex flex-col h-full">
@@ -352,7 +359,7 @@ export default function SpacePage() {
                     <div key={msg.id} className="flex items-start gap-2">
                       <Avatar className="h-8 w-8">
                         <AvatarFallback>
-                          {formatSender(msg.sender)[0]?.toUpperCase()}
+                          {msg.sender[0].toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div>

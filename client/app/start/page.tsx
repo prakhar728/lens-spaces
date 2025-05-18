@@ -127,6 +127,11 @@ export default function StartSpace() {
         // Calculate upload progress (max 95%, reserve 5% for finalizing)
         const progress = Math.min(95, Math.floor((index / (total + 5)) * 100));
         setUploadStatus(progress);
+
+        toast({
+          title: "Chunk Uploaded",
+          description: `Chunk #${index + 1} uploaded to Grove.`,
+        });
       });
 
       // Set up error callback
