@@ -73,6 +73,12 @@ export default function SpacePage() {
   function sleep(seconds: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   }
+  const waitForMetadata = async () => {
+    const video = videoRef.current!;
+    while (video.readyState < 1) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  };
 
   async function initializeStream(streamUri: string) {
     try {
@@ -97,6 +103,40 @@ export default function SpacePage() {
 
       const video = videoRef.current!;
       video.src = URL.createObjectURL(mediaSource);
+      console.log("Assigned video.src:", video.src);
+      video.addEventListener("loadedmetadata", () => {
+        console.log("🎥 loadedmetadata: duration =", video.duration);
+      });
+
+      video.addEventListener("canplay", () => {
+        console.log("🎬 canplay: video can begin playback");
+      });
+
+      video.addEventListener("error", () => {
+        const error = video.error;
+        if (!error) {
+          console.error("❌ video error: Unknown");
+          return;
+        }
+
+        const errorMap = {
+          1: "MEDIA_ERR_ABORTED",
+          2: "MEDIA_ERR_NETWORK",
+          3: "MEDIA_ERR_DECODE",
+          4: "MEDIA_ERR_SRC_NOT_SUPPORTED",
+        };
+
+        console.error("❌ video error:", {
+          code: error.code,
+          name: errorMap[error.code] || "Unknown Error",
+          message: error.message || "No detailed message",
+        });
+      });
+
+      setTimeout(() => {
+        console.log("Attempting to play video manually...");
+        video.play().catch((err) => console.warn("Autoplay blocked:", err));
+      }, 1000);
 
       mediaSource.addEventListener(
         "sourceopen",
@@ -107,7 +147,7 @@ export default function SpacePage() {
           );
 
           try {
-            const mime = "video/webm;codecs=vp8,opus";
+            const mime = "video/webm;codecs=vp9,opus";
 
             if (!MediaSource.isTypeSupported(mime)) {
               throw new Error("MIME type not supported");
@@ -132,14 +172,12 @@ export default function SpacePage() {
               mediaSource
             );
 
-            if (manifest.status === "live") {
-              pollingRef.current = setInterval(
-                () => pollManifestForNewChunks(streamUri),
-                2000
-              );
-            } else {
-              mediaSource.endOfStream();
-            }
+            // if (manifest.status === "live") {
+            //   pollingRef.current = setInterval(
+            //     () => pollManifestForNewChunks(streamUri),
+            //     2000
+            //   );
+            // } 
 
             setIsLoading(false);
           } catch (err) {
@@ -169,15 +207,24 @@ export default function SpacePage() {
       const buffer = await chunkRes.arrayBuffer();
 
       await new Promise<void>((resolve) => {
+        console.log("Chunk buffer size:", buffer.byteLength);
         console.log(
-          "SourceBuffer created. sourceBuffers.length:",
-          mediaSource.sourceBuffers.length
+          "MediaSource state before append:",
+          mediaSourceRef.current?.readyState
         );
-        console.log("activeSourceBuffers.length:", mediaSource.sourceBuffers);
-        
-        sourceBuffer.addEventListener("updateend", () => resolve(), {
-          once: true,
-        });
+        console.log(
+          "SourceBuffer updating before append:",
+          sourceBuffer.updating
+        );
+
+        sourceBuffer.addEventListener(
+          "updateend",
+          () => {
+            console.log("updateend fired");
+            resolve();
+          },
+          { once: true }
+        );
         try {
           sourceBuffer.appendBuffer(buffer);
         } catch (err) {
