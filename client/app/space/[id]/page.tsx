@@ -32,7 +32,7 @@ export default function SpacePage() {
   const { toast } = useToast();
   const [message, setMessage] = useState("");
   const [reactions, setReactions] = useState({ likes: 42, hearts: 18 });
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [space, setSpace] = useState(DEFAULT_SPACE);
   const [manifest, setManifest] = useState<StreamManifest | null>(null);
@@ -67,115 +67,131 @@ export default function SpacePage() {
   const lastChunkIndexRef = useRef(-1);
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
+  async function initializeStreamPlayback() {
+    try {
+      const streamUri = decodeURIComponent(id as string);
+      setIsLoading(true);
+
+      const storageClient = initializeGroveClient();
+      const manifestUrl = storageClient.resolve(streamUri);
+
+      const response = await fetch(manifestUrl);
+      if (!response.ok) throw new Error("Failed to fetch manifest");
+
+      const data: StreamManifest = await response.json();
+      setManifest(data);
+      setSpace({
+        id: streamUri,
+        title: data.title,
+        creator: data.creator,
+        creatorAvatar: "/placeholder.svg?height=40&width=40",
+        viewers: Math.floor(Math.random() * 50) + 5,
+        isLive: data.status === "live",
+      });
+      setViewerCount(Math.floor(Math.random() * 50) + 5);
+
+      console.log(data);
+
+      console.log(videoRef.current);
+
+      if (!videoRef.current) return;
+      const mediaSource = new MediaSource();
+      mediaSourceRef.current = mediaSource;
+      videoRef.current.src = URL.createObjectURL(mediaSource);
+
+      mediaSource.addEventListener("sourceopen", async () => {
+        const mimeType = "video/webm;codecs=vp8,opus";
+        const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
+        sourceBufferRef.current = sourceBuffer;
+
+        sourceBuffer.addEventListener("updateend", () => {
+          processQueue();
+        });
+
+        for (const chunk of data.chunks) {
+          await fetchAndAppendChunk(chunk.uri);
+          lastChunkIndexRef.current = chunk.index;
+        }
+
+        if (data.status === "live") {
+          pollingRef.current = setInterval(pollManifestForNewChunks, 2000);
+        } else {
+          mediaSource.endOfStream();
+        }
+      });
+    } catch (err) {
+      console.error("Stream error:", err);
+      setError("Unable to load stream");
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function pollManifestForNewChunks() {
+    if (!manifest) return;
+    const storageClient = initializeGroveClient();
+
+    const updatedManifestUrl = storageClient.resolve(streamUri);
+    const response = await fetch(updatedManifestUrl);
+    const updatedManifest: StreamManifest = await response.json();
+
+    const newChunks = updatedManifest.chunks.filter(
+      (c) => c.index > lastChunkIndexRef.current
+    );
+
+    for (const chunk of newChunks) {
+      await fetchAndAppendChunk(chunk.uri);
+      lastChunkIndexRef.current = chunk.index;
+    }
+
+    if (updatedManifest.status === "ended") {
+      clearInterval(pollingRef.current!);
+      mediaSourceRef.current?.endOfStream();
+      setSpace((prev) => ({ ...prev, isLive: false }));
+      toast({ title: "Stream Ended", description: "The stream has ended" });
+    }
+  }
+
+  const fetchQueue: Array<ArrayBuffer> = [];
+  let isAppending = false;
+
+  async function fetchAndAppendChunk(uri: string) {
+    const storageClient = initializeGroveClient();
+
+    const url = storageClient.resolve(uri);
+    console.log(uri);
+
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const data = await res.arrayBuffer();
+    fetchQueue.push(data);
+    processQueue();
+  }
+
+  function processQueue() {
+    if (
+      !sourceBufferRef.current ||
+      sourceBufferRef.current.updating ||
+      !fetchQueue.length
+    )
+      return;
+    const buffer = fetchQueue.shift();
+    if (buffer) sourceBufferRef.current.appendBuffer(buffer);
+  }
+
   useEffect(() => {
     if (!id) return;
 
-    const streamUri = decodeURIComponent(id as string);
-    setIsLoading(true);
-
-    async function initializeStreamPlayback() {
-      try {
-        const storageClient = initializeGroveClient();
-        const manifestUrl = storageClient.resolve(streamUri);
-        const response = await fetch(manifestUrl);
-        if (!response.ok) throw new Error("Failed to fetch manifest");
-
-        const data: StreamManifest = await response.json();
-        setManifest(data);
-        setSpace({
-          id: streamUri,
-          title: data.title,
-          creator: data.creator,
-          creatorAvatar: "/placeholder.svg?height=40&width=40",
-          viewers: Math.floor(Math.random() * 50) + 5,
-          isLive: data.status === "live",
-        });
-        setViewerCount(Math.floor(Math.random() * 50) + 5);
-
-        if (!videoRef.current) return;
-        const mediaSource = new MediaSource();
-        mediaSourceRef.current = mediaSource;
-        videoRef.current.src = URL.createObjectURL(mediaSource);
-
-        mediaSource.addEventListener("sourceopen", async () => {
-          const mimeType = "video/webm;codecs=vp8,opus";
-          const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
-          sourceBufferRef.current = sourceBuffer;
-
-          sourceBuffer.addEventListener("updateend", () => {
-            processQueue();
-          });
-
-          for (const chunk of data.chunks) {
-            await fetchAndAppendChunk(chunk.uri);
-            lastChunkIndexRef.current = chunk.index;
-          }
-
-          if (data.status === "live") {
-            pollingRef.current = setInterval(pollManifestForNewChunks, 2000);
-          } else {
-            mediaSource.endOfStream();
-          }
-        });
-      } catch (err) {
-        console.error("Stream error:", err);
-        setError("Unable to load stream");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    async function pollManifestForNewChunks() {
-      if (!manifest) return;
-      const storageClient = initializeGroveClient();
-
-      const updatedManifestUrl = storageClient.resolve(streamUri);
-      const response = await fetch(updatedManifestUrl);
-      const updatedManifest: StreamManifest = await response.json();
-
-      const newChunks = updatedManifest.chunks.filter(
-        (c) => c.index > lastChunkIndexRef.current
-      );
-
-      for (const chunk of newChunks) {
-        await fetchAndAppendChunk(chunk.uri);
-        lastChunkIndexRef.current = chunk.index;
-      }
-
-      if (updatedManifest.status === "ended") {
-        clearInterval(pollingRef.current!);
-        mediaSourceRef.current?.endOfStream();
-        setSpace((prev) => ({ ...prev, isLive: false }));
-        toast({ title: "Stream Ended", description: "The stream has ended" });
-      }
-    }
-
-    const fetchQueue: Array<ArrayBuffer> = [];
-    let isAppending = false;
-
-    async function fetchAndAppendChunk(uri: string) {
-      const storageClient = initializeGroveClient();
-
-      const url = storageClient.resolve(uri);
-      const res = await fetch(url);
-      if (!res.ok) return;
-      const data = await res.arrayBuffer();
-      fetchQueue.push(data);
-      processQueue();
-    }
-
-    function processQueue() {
-      if (
-        !sourceBufferRef.current ||
-        sourceBufferRef.current.updating ||
-        !fetchQueue.length
-      )
+    const waitForVideoRef = () => {
+      if (!videoRef.current) {
+        setTimeout(waitForVideoRef, 100);
         return;
-      const buffer = fetchQueue.shift();
-      if (buffer) sourceBufferRef.current.appendBuffer(buffer);
-    }
+      }
 
-    initializeStreamPlayback();
+      initializeStreamPlayback();
+    };
+
+    waitForVideoRef();
 
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
@@ -232,36 +248,34 @@ export default function SpacePage() {
           <div className="lg:col-span-2 space-y-6">
             <Card className="overflow-hidden shadow-soft">
               <div className="aspect-video bg-black flex items-center justify-center text-white relative">
-                {isLoading ? (
-                  <div className="flex flex-col items-center justify-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-2"></div>
-                    <p>Loading stream...</p>
-                  </div>
-                ) : error ? (
-                  <div className="text-center p-6">
-                    <p className="text-red-500 font-semibold mb-2">{error}</p>
-                    <Button
-                      variant="outline"
-                      className="mt-4"
-                      onClick={() => window.location.reload()}
-                    >
-                      Try Again
-                    </Button>
-                  </div>
-                ) : (
-                  <video
-                    ref={videoRef}
-                    className="w-full h-full object-cover"
-                    playsInline
-                    controls
-                  />
-                )}
-                {space.isLive && !isLoading && !error && (
-                  <div className="absolute top-4 left-4">
-                    <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full">
-                      <div className="animate-pulse text-red-500">●</div>
-                      <span className="text-sm font-medium">LIVE</span>
-                    </div>
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  playsInline
+                  controls
+                />
+
+                {(isLoading || error) && (
+                  <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center z-10">
+                    {isLoading ? (
+                      <div className="flex flex-col items-center">
+                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-2"></div>
+                        <p>Loading stream...</p>
+                      </div>
+                    ) : (
+                      <div className="text-center p-6">
+                        <p className="text-red-500 font-semibold mb-2">
+                          {error}
+                        </p>
+                        <Button
+                          variant="outline"
+                          className="mt-4"
+                          onClick={() => window.location.reload()}
+                        >
+                          Try Again
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
