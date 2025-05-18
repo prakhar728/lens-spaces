@@ -304,6 +304,46 @@ export class StreamRecorder {
     }
   }
 
+  private async startNewRecorderChunkLoop(): Promise<void> {
+    const chunkDuration = this.options.chunkDuration;
+
+    const loop = async () => {
+      if (!this.isRecording || !this.stream) return;
+
+      const mimeType = this.mediaRecorder?.mimeType || "video/webm";
+
+      // Create a new MediaRecorder
+      this.mediaRecorder = new MediaRecorder(this.stream, { mimeType });
+
+      this.mediaRecorder.ondataavailable = this.handleDataAvailable.bind(this);
+      this.mediaRecorder.onerror = (event) => {
+        console.error("MediaRecorder error:", event);
+        this.handleError(new Error("MediaRecorder error"));
+      };
+
+      return new Promise<void>((resolve) => {
+        this.mediaRecorder!.onstop = () => {
+          resolve();
+          if (this.isRecording) {
+            setTimeout(() => {
+              loop(); // Recursively start next chunk
+            }, 0);
+          }
+        };
+
+        // Start and stop after chunkDuration
+        this.mediaRecorder!.start();
+        setTimeout(() => {
+          if (this.mediaRecorder?.state === "recording") {
+            this.mediaRecorder.stop();
+          }
+        }, chunkDuration);
+      });
+    };
+
+    await loop();
+  }
+
   public async startRecording(mediaStream: MediaStream): Promise<void> {
     if (this.isRecording) {
       return;
@@ -354,7 +394,7 @@ export class StreamRecorder {
       };
 
       // Start recording with specified chunk interval
-      this.mediaRecorder.start(this.options.chunkDuration);
+      this.startNewRecorderChunkLoop();
 
       console.log("Recording started with mime type:", selectedMimeType);
     } catch (error) {
