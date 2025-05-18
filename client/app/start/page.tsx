@@ -20,7 +20,7 @@ export default function StartSpace() {
   const [account, setAccount] = useState<any>(null);
   const [streamUri, setStreamUri] = useState<string | null>(null);
   const { data: walletClient } = useWalletClient();
-  const [isDownloadMode, setIsDownloadMode] = useState(true);
+  const [isDownloadMode, setIsDownloadMode] = useState(false);
 
   // Video preview reference
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -30,7 +30,7 @@ export default function StartSpace() {
   const streamRef = useRef<MediaStream | null>(null);
   const lensClientRef = useRef<any>(null);
 
-  function sleep(ms) {
+  function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 

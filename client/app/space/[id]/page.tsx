@@ -71,8 +71,7 @@ export default function SpacePage() {
   const chatContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Decode the stream URI from the URL parameter
-  const streamUri = decodeURIComponent(id);
-  console.log(streamUri);
+  const streamUri = decodeURIComponent(id as string);
   
   // Initialize player and load stream
   useEffect(() => {
