@@ -172,12 +172,12 @@ export default function SpacePage() {
               mediaSource
             );
 
-            // if (manifest.status === "live") {
-            //   pollingRef.current = setInterval(
-            //     () => pollManifestForNewChunks(streamUri),
-            //     2000
-            //   );
-            // } 
+            if (manifest.status === "live") {
+              pollingRef.current = setInterval(
+                () => pollManifestForNewChunks(streamUri),
+                20000
+              );
+            }
 
             setIsLoading(false);
           } catch (err) {

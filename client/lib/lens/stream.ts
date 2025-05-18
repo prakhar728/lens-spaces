@@ -393,8 +393,10 @@ export class StreamRecorder {
         this.handleError(new Error("MediaRecorder error"));
       };
 
+      this.mediaRecorder.start(this.options.chunkDuration);
+      
       // Start recording with specified chunk interval
-      this.startNewRecorderChunkLoop();
+      // this.startNewRecorderChunkLoop();
 
       console.log("Recording started with mime type:", selectedMimeType);
     } catch (error) {
