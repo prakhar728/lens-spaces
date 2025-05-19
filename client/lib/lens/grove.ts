@@ -7,13 +7,6 @@
 
 import { immutable, lensAccountOnly, StorageClient, walletOnly } from "@lens-chain/storage-client";
 
-// If these imports from @lens-chain/sdk and storage-client can't be directly resolved
-// mock them until they can be replaced with actual imports
-const mockChains = {
-  testnet: { id: 37111 },
-  mainnet: { id: 232 }
-};
-
 // Types
 export enum ChainId {
   TESTNET = 37111,

@@ -1,3 +1,7 @@
+/**
+ * Updated StartSpace component with Lens post creation and chat integration
+ */
+
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
@@ -11,16 +15,21 @@ import { fetchAccount } from "@lens-protocol/client/actions";
 import { getLensClient } from "@/lib/lens/client";
 import { useWalletClient } from "wagmi";
 import { signer } from "@/lib/lens/signer";
+import { StreamPostButton } from "@/components/space/StreamPostButton";
+import LensChat from "@/components/space/Chat";
 
 export default function StartSpace() {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [uploadStatus, setUploadStatus] = useState(0);
+  const [streamStartTime, setstreamStartTime] = useState(0);
   const [account, setAccount] = useState<any>(null);
   const [streamUri, setStreamUri] = useState<string | null>(null);
   const { data: walletClient } = useWalletClient();
   const [isDownloadMode, setIsDownloadMode] = useState(false);
+  const [postId, setPostId] = useState<string | null>(null);
+  const [showChat, setShowChat] = useState(false);
 
   // Video preview reference
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -72,6 +81,7 @@ export default function StartSpace() {
     try {
       setIsStreaming(true);
       setUploadStatus(0);
+      setstreamStartTime(Date.now());
 
       // Request user media
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -94,6 +104,7 @@ export default function StartSpace() {
       // Create stream recorder
       recorderRef.current = new StreamRecorder(
         signer.address,
+        account?.address,
         lensClientRef.current, // Lens client for signing
         { chunkDuration: 30000 } // Create a new chunk every 3 seconds
       );
@@ -143,12 +154,11 @@ export default function StartSpace() {
         });
       });
 
-      console.log(signer.address);
 
       // Initialize the stream
       const uri = await recorderRef.current.initializeStream(
         title,
-        signer.address
+        account.address
       );
 
       // Store stream URI
@@ -162,19 +172,6 @@ export default function StartSpace() {
         title: "Stream Started",
         description: "Your live space is now active",
       });
-
-      // Optional: Create a Lens publication to announce the stream
-      // This would integrate with Lens Protocol's publication system
-      try {
-        // Example Lens publication code (not implemented here)
-        // await createLensPublication({
-        //   content: `I'm live streaming: ${title}`,
-        //   attachments: [{ uri: uri, type: "STREAM_MANIFEST" }]
-        // });
-      } catch (pubError) {
-        console.error("Error creating publication:", pubError);
-        // Continue even if publication fails
-      }
     } catch (error) {
       console.error("Error starting stream:", error);
       toast({
@@ -246,6 +243,18 @@ export default function StartSpace() {
     });
   };
 
+  // Handle post creation success
+  const handlePostCreated = (newPostId: string) => {
+    setPostId(newPostId);
+    setShowChat(true);
+
+    toast({
+      title: "Chat Enabled",
+      description:
+        "Your stream now has a chat section powered by Lens comments!",
+    });
+  };
+
   return (
     <main className="min-h-screen pt-20 pb-10 px-4">
       <Navbar showWalletConnect />
@@ -282,115 +291,141 @@ export default function StartSpace() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-6">
-            <Card className="shadow-soft overflow-hidden">
-              <div className="aspect-video bg-black flex items-center justify-center text-white relative">
-                {/* Actual video preview */}
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  playsInline
-                  muted
-                />
-                <div className="absolute top-4 left-4">
-                  <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full">
-                    <div className="animate-pulse text-red-500">●</div>
-                    <span className="text-sm font-medium">LIVE</span>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <Card className="shadow-soft overflow-hidden">
+                <div className="aspect-video bg-black flex items-center justify-center text-white relative">
+                  {/* Actual video preview */}
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    muted
+                  />
+                  <div className="absolute top-4 left-4">
+                    <div className="flex items-center gap-2 bg-black/50 px-3 py-1 rounded-full">
+                      <div className="animate-pulse text-red-500">●</div>
+                      <span className="text-sm font-medium">LIVE</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <CardContent className="pt-6">
-                <h2 className="text-xl font-semibold mb-4">{title}</h2>
-                <div className="space-y-2 mb-6">
-                  <div className="flex justify-between text-sm">
-                    <span>Grove Upload</span>
-                    <span>{uploadStatus}%</span>
+                <CardContent className="pt-6">
+                  <h2 className="text-xl font-semibold mb-4">{title}</h2>
+                  <div className="space-y-2 mb-6">
+                    <div className="flex justify-between text-sm">
+                      <span>Grove Upload</span>
+                      <span>{uploadStatus}%</span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${uploadStatus}%` }}
+                      ></div>
+                    </div>
                   </div>
-                  <div className="w-full bg-muted rounded-full h-2">
-                    <div
-                      className="bg-primary h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${uploadStatus}%` }}
-                    ></div>
-                  </div>
-                </div>
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <Button
-                    variant="destructive"
-                    className="flex-1 rounded-full shadow-soft"
-                    onClick={endStream}
-                  >
-                    <StopCircle className="mr-2 h-4 w-4" /> End Stream
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-full shadow-soft"
-                    onClick={shareStream}
-                    disabled={!streamUri}
-                  >
-                    <Share className="mr-2 h-4 w-4" /> Share
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-            <div className="text-center text-sm text-muted-foreground">
-              <p>
-                Your stream is being stored on decentralized storage via Grove.
-              </p>
-              <p>
-                This ensures your content remains censorship-resistant and truly
-                yours.
-              </p>
-
-              <Button
-                variant="outline"
-                onClick={() => setIsDownloadMode(!isDownloadMode)}
-                className="mb-4"
-              >
-                {isDownloadMode
-                  ? "Switch to Grove Upload"
-                  : "Switch to Local Download"}
-              </Button>
-              {streamUri && (
-                <div className="mt-4 flex flex-col items-center">
-                  <p className="mb-2 font-medium">Direct Link:</p>
-                  <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                  <div className="flex flex-col sm:flex-row gap-4">
                     <Button
-                      variant="link"
-                      className="text-primary font-medium truncate max-w-md"
-                      onClick={() => {
-                        const shareUrl = `${
-                          window.location.origin
-                        }/space/${encodeURIComponent(streamUri)}`;
-                        window.open(shareUrl, "_blank");
-                      }}
+                      variant="destructive"
+                      className="flex-1 rounded-full shadow-soft"
+                      onClick={endStream}
                     >
-                      {`${window.location.origin}/space/${encodeURIComponent(
-                        streamUri
-                      )}`}
+                      <StopCircle className="mr-2 h-4 w-4" /> End Stream
                     </Button>
                     <Button
-                      size="sm"
                       variant="outline"
-                      className="px-2 rounded-full flex-shrink-0"
-                      onClick={() => {
-                        const shareUrl = `${
-                          window.location.origin
-                        }/space/${encodeURIComponent(streamUri)}`;
-                        navigator.clipboard.writeText(shareUrl).then(() => {
-                          toast({
-                            title: "Link Copied",
-                            description:
-                              "Direct stream link copied to clipboard",
-                          });
-                        });
-                      }}
+                      className="flex-1 rounded-full shadow-soft"
+                      onClick={shareStream}
+                      disabled={!streamUri}
                     >
-                      <Share className="h-4 w-4" />
+                      <Share className="mr-2 h-4 w-4" /> Share
                     </Button>
+
+                    {/* Stream Post Button */}
+                    <StreamPostButton
+                      streamUri={streamUri}
+                      title={title}
+                      disabled={!streamUri || (Date.now() - streamStartTime) / 1000  < 30} // Only enable 30 seconds after streaming starts
+                      onPostCreated={handlePostCreated}
+                    />
                   </div>
-                </div>
-              )}
+                </CardContent>
+              </Card>
+
+              <div className="text-center text-sm text-muted-foreground">
+                <p>
+                  Your stream is being stored on decentralized storage via
+                  Grove.
+                </p>
+                <p>
+                  This ensures your content remains censorship-resistant and
+                  truly yours.
+                </p>
+
+                <Button
+                  variant="outline"
+                  onClick={() => setIsDownloadMode(!isDownloadMode)}
+                  className="mt-4 mb-4"
+                >
+                  {isDownloadMode
+                    ? "Switch to Grove Upload"
+                    : "Switch to Local Download"}
+                </Button>
+
+                {streamUri && (
+                  <div className="mt-4 flex flex-col items-center">
+                    <p className="mb-2 font-medium">Direct Link:</p>
+                    <div className="flex items-center gap-2 max-w-full overflow-hidden">
+                      <Button
+                        variant="link"
+                        className="text-primary font-medium truncate max-w-md"
+                        onClick={() => {
+                          const shareUrl = `${
+                            window.location.origin
+                          }/space/${encodeURIComponent(streamUri)}`;
+                          window.open(shareUrl, "_blank");
+                        }}
+                      >
+                        {`${window.location.origin}/space/${encodeURIComponent(
+                          streamUri
+                        )}`}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="px-2 rounded-full flex-shrink-0"
+                        onClick={() => {
+                          const shareUrl = `${
+                            window.location.origin
+                          }/space/${encodeURIComponent(streamUri)}`;
+                          navigator.clipboard.writeText(shareUrl).then(() => {
+                            toast({
+                              title: "Link Copied",
+                              description:
+                                "Direct stream link copied to clipboard",
+                            });
+                          });
+                        }}
+                      >
+                        <Share className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+
+            {/* Chat Section - Only show when a post has been created */}
+            {showChat && postId && (
+              <div className="lg:col-span-1">
+                <LensChat
+                  postId={postId}
+                  isLive={true}
+                  viewerCount={Math.floor(Math.random() * 10) + 1} // Simulated viewer count
+                  height="h-[600px]"
+                  streamOwner={account?.address}
+                />
+              </div>
+            )}
           </div>
         )}
       </div>

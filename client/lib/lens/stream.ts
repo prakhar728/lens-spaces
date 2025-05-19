@@ -76,7 +76,7 @@ export async function initializeStream(
     // Create mutable ACL for the streamer (only they can update)
     const updateACL = createACL(
       ACLType.WALLET_ADDRESS,
-      ChainId.TESTNET,
+      ChainId.MAINNET,
       userAddress
     );
 
@@ -104,7 +104,7 @@ export async function uploadStreamChunk(
 ): Promise<string> {
   try {
     // Create immutable ACL for chunks (anyone can view)
-    const viewACL = createACL(ACLType.IMMUTABLE, ChainId.TESTNET);
+    const viewACL = createACL(ACLType.IMMUTABLE, ChainId.MAINNET);
 
     // Create a file from the chunk
     const file = new File([chunk], `chunk-${index}-${Date.now()}.webm`, {
@@ -149,7 +149,7 @@ export async function updateStreamManifest(
     // Create ACL for updating
     const updateACL = createACL(
       ACLType.WALLET_ADDRESS,
-      ChainId.TESTNET,
+      ChainId.MAINNET,
       userAddress
     );
 
@@ -183,7 +183,7 @@ export async function endStream(
     // Create ACL for updating
     const updateACL = createACL(
       ACLType.WALLET_ADDRESS,
-      ChainId.TESTNET,
+      ChainId.MAINNET,
       userAddress
     );
 
@@ -232,6 +232,7 @@ export class StreamRecorder {
   private streamUri: string | null = null;
   private manifest: StreamManifest | null = null;
   private userAddress: string;
+  private streamerAddress: string;
   private signer: Signer;
   private options: StreamRecorderOptions;
   private isRecording: boolean = false;
@@ -250,10 +251,12 @@ export class StreamRecorder {
 
   constructor(
     userAddress: string,
+    streamerAddress: string,
     signer: Signer,
     options: StreamRecorderOptions = { chunkDuration: 30000 }
   ) {
     this.userAddress = userAddress;
+    this.streamerAddress = streamerAddress;
     this.signer = signer;
     this.options = options;
   }

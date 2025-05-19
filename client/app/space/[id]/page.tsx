@@ -6,11 +6,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Heart, MessageSquare, Share2, ThumbsUp } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/use-toast";
 import { StreamManifest } from "@/lib/lens/stream";
 import { useParams } from "next/navigation";
 import { initializeGroveClient } from "@/lib/lens/grove";
+import { getAccountByAddress, getPostsByAuthor } from "@/lib/lens/lens";
+import { useWalletClient } from "wagmi";
+import LensChat from "@/components/space/Chat";
 
 interface ChatMessage {
   id: string;
@@ -30,49 +32,28 @@ const DEFAULT_SPACE = {
 
 export default function SpacePage() {
   const { toast } = useToast();
-  const [message, setMessage] = useState("");
   const [reactions, setReactions] = useState({ likes: 42, hearts: 18 });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [space, setSpace] = useState(DEFAULT_SPACE);
   const [manifest, setManifest] = useState<StreamManifest | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
+  const [creator, setCreator] = useState<any>(null);
+  const [lensPostId, setLensPostId] = useState<string | null>(null);
+  const { data: walletClient } = useWalletClient();
   const { id } = useParams();
-
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      sender: "lens/bob",
-      message: "This is amazing content! Thanks for sharing.",
-      timestamp: Date.now() - 5000,
-    },
-    {
-      id: "2",
-      sender: "lens/charlie",
-      message: "Could you explain more about the Web3 authentication?",
-      timestamp: Date.now() - 3000,
-    },
-    {
-      id: "3",
-      sender: "lens/diana",
-      message: "Just sent you a tip! Keep up the great work.",
-      timestamp: Date.now() - 1000,
-    },
-  ]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const mediaSourceRef = useRef<MediaSource | null>(null);
   const pollingRef = useRef<NodeJS.Timer | null>(null);
   const lastChunkIndexRef = useRef(-1);
-  const chatContainerRef = useRef<HTMLDivElement | null>(null);
-  const fetchQueueRef = useRef<Array<ArrayBuffer>>([]);
-  const isAppendingRef = useRef(false);
   const [streamUri, setStreamUri] = useState("");
 
   function sleep(seconds: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   }
+
   const waitForMetadata = async () => {
     const video = videoRef.current!;
     while (video.readyState < 1) {
@@ -83,6 +64,7 @@ export default function SpacePage() {
   async function initializeStream(streamUri: string) {
     try {
       setIsLoading(true);
+      setStreamUri(streamUri);
       const storageClient = initializeGroveClient();
       const manifestUrl = storageClient.resolve(streamUri);
       const res = await fetch(manifestUrl);
@@ -97,6 +79,37 @@ export default function SpacePage() {
         isLive: manifest.status === "live",
       });
       setViewerCount(Math.floor(Math.random() * 50) + 5);
+
+      // Fetch creator details
+      if (manifest.creator) {
+        try {
+          const creatorAccount = await getAccountByAddress(manifest.creator);
+          setCreator(creatorAccount);
+
+          // Try to find a Lens post for this stream URI
+          try {
+            const creatorPosts = await getPostsByAuthor(manifest.creator);
+            // Filter for posts that might contain our stream URI
+            const matchingPost = creatorPosts.items.find((post: any) => {
+              // Check if this post references our stream
+              if (post.metadata.__typename === "LivestreamMetadata") {
+                const liveUrl =
+                  post.metadata.liveUrl || post.metadata.playbackUrl;
+                return liveUrl === streamUri;
+              }
+              return false;
+            });
+
+            if (matchingPost) {
+              setLensPostId(matchingPost.id);
+            }
+          } catch (error) {
+            console.error("Error fetching creator posts:", error);
+          }
+        } catch (error) {
+          console.error("Error fetching creator account:", error);
+        }
+      }
 
       const mediaSource = new MediaSource();
       mediaSourceRef.current = mediaSource;
@@ -329,36 +342,21 @@ export default function SpacePage() {
     };
   }, [id]);
 
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop =
-        chatContainerRef.current.scrollHeight;
-    }
-  }, [chatMessages]);
-
   const handleReaction = (type: "likes" | "hearts") => {
     setReactions((prev) => ({ ...prev, [type]: prev[type] + 1 }));
+
+    // If there's a post ID, you could potentially trigger a reaction on Lens
+    if (lensPostId && walletClient) {
+      // This would be where you integrate with your lens.ts functions for reactions
+      // Example: createReaction(walletClient, lensPostId, type === "likes" ? "UPVOTE" : "LOVE");
+    }
+
     toast({
       title: "Reaction Sent",
       description: `Your ${
         type === "likes" ? "like" : "heart"
       } was sent to the creator!`,
     });
-  };
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message) return;
-    setChatMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        sender: "lens/you",
-        message,
-        timestamp: Date.now(),
-      },
-    ]);
-    setMessage("");
   };
 
   const handleShare = () => {
@@ -417,11 +415,16 @@ export default function SpacePage() {
                   <div className="flex items-start gap-4">
                     <Avatar className="h-12 w-12">
                       <AvatarImage
-                        src={space.creatorAvatar || "/placeholder.svg"}
-                        alt={space.creator}
+                        src={
+                          creator?.metadata?.picture?.__typename === "ImageSet"
+                            ? creator.metadata.picture.optimized?.uri
+                            : space.creatorAvatar
+                        }
+                        alt={creator?.username?.value || space.creator}
                       />
                       <AvatarFallback>
-                        {space.creator[0]?.toUpperCase()}
+                        {(creator?.username?.value ||
+                          space.creator)[0]?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -443,7 +446,15 @@ export default function SpacePage() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-muted-foreground">{space.creator}</p>
+                      <p className="text-muted-foreground">
+                        {creator?.username?.value ||
+                          (creator?.address
+                            ? `${creator.address.slice(
+                                0,
+                                6
+                              )}...${creator.address.slice(-4)}`
+                            : space.creator)}
+                      </p>
                       <p className="text-sm text-muted-foreground mt-1">
                         {viewerCount} viewers
                       </p>
@@ -484,51 +495,79 @@ export default function SpacePage() {
           </div>
 
           <div className="space-y-6">
-            <Card className="shadow-soft h-[calc(100vh-200px)] flex flex-col">
-              <CardContent className="pt-6 flex flex-col h-full">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-semibold">Live Chat</h2>
-                  <Badge variant="outline" className="px-2 py-1 text-xs">
-                    {viewerCount} online
-                  </Badge>
-                </div>
-                <div
-                  ref={chatContainerRef}
-                  className="flex-1 overflow-y-auto mb-4 space-y-4"
-                >
-                  {chatMessages.map((msg) => (
-                    <div key={msg.id} className="flex items-start gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback>
-                          {msg.sender[0].toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="text-sm font-medium">{msg.sender}</p>
-                        <p className="text-sm">{msg.message}</p>
+            {/* Creator Profile Card */}
+            {creator && (
+              <Card className="shadow-soft">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-4">
+                    <Avatar className="h-16 w-16">
+                      <AvatarImage
+                        src={
+                          creator.metadata?.picture?.__typename === "ImageSet"
+                            ? creator.metadata.picture.optimized?.uri
+                            : "/placeholder.svg"
+                        }
+                        alt={creator.username?.value || creator.address}
+                      />
+                      <AvatarFallback>
+                        {(creator.username?.value ||
+                          creator.address)[0]?.toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h2 className="text-xl font-bold">
+                        {creator.metadata?.name || "Unnamed Creator"}
+                      </h2>
+                      <p className="text-muted-foreground">
+                        {creator.username?.value ||
+                          `${creator.address.slice(
+                            0,
+                            6
+                          )}...${creator.address.slice(-4)}`}
+                      </p>
+                      {creator.metadata?.bio && (
+                        <p className="text-sm mt-2">{creator.metadata.bio}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full text-xs"
+                          onClick={() =>
+                            window.open(
+                              `https://hey.xyz/u/${
+                                creator.username?.value || creator.address
+                              }`,
+                              "_blank"
+                            )
+                          }
+                        >
+                          View Profile
+                        </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
-                <form onSubmit={handleSendMessage} className="mt-auto">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Type a message..."
-                      value={message}
-                      onChange={(e) => setMessage(e.target.value)}
-                      className="rounded-full shadow-soft"
-                    />
-                    <Button
-                      type="submit"
-                      size="icon"
-                      className="rounded-full shadow-soft"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                    </Button>
                   </div>
-                </form>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Lens Chat Component */}
+            <LensChat
+              postId={lensPostId}
+              isLive={space.isLive}
+              viewerCount={viewerCount}
+              height="h-[calc(100vh-350px)]"
+              streamOwner={manifest?.creator}
+            />
+
+            {!lensPostId && (
+              <div className="text-center text-muted-foreground p-4">
+                <p>This stream doesn't have a Lens post yet.</p>
+                <p className="text-sm">
+                  Chat functionality is powered by Lens Protocol comments.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       </div>
