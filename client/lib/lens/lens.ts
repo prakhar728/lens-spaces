@@ -12,6 +12,7 @@ import {
   evmAddress,
   PostReferenceType,
   Post,
+  PostReactionType,
 } from "@lens-protocol/client";
 import {
   fetchPost,
@@ -20,6 +21,9 @@ import {
   fetchPostsToExplore,
   post,
   fetchAccount,
+  fetchPostReactions,
+  addReaction,
+  undoReaction,
 } from "@lens-protocol/client/actions";
 import { handleOperationWith } from "@lens-protocol/client/viem";
 import { liveStream, textOnly } from "@lens-protocol/metadata";
@@ -267,6 +271,142 @@ export async function createComment(
 }
 
 /**
+ * Add a reaction (upvote or downvote) to a post
+ *
+ * @param walletClient - The wallet client
+ * @param postIdToReact - ID of post to react to
+ * @param reactionType - Type of reaction (Upvote or Downvote)
+ * @returns Success status
+ */
+export async function reactToPost(
+  postIdToReact: string,
+  reactionType: PostReactionType = PostReactionType.Upvote
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sessionClient = await getLensClient();
+
+    if (!sessionClient.isSessionClient()) {
+      return {
+        success: false,
+        error: "No authenticated session",
+      };
+    }
+
+    const result = await addReaction(sessionClient, {
+      post: postId(postIdToReact),
+      reaction: reactionType,
+    });
+
+    if (result.isErr()) {
+      console.error("Error adding reaction:", result.error);
+      return {
+        success: false,
+        error: result.error.message,
+      };
+    }
+
+    return {
+      success: !!result.value,
+    };
+  } catch (error) {
+    console.error("Error in reactToPost:", error);
+    return {
+      success: false,
+      error: (error as Error).message,
+    };
+  }
+}
+
+/**
+ * Remove a reaction (upvote or downvote) from a post
+ *
+ * @param walletClient - The wallet client
+ * @param postIdToUnreact - ID of post to remove reaction from
+ * @param reactionType - Type of reaction to remove (Upvote or Downvote)
+ * @returns Success status
+ */
+export async function removeReaction(
+  postIdToUnreact: string,
+  reactionType: PostReactionType = PostReactionType.Upvote
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sessionClient = await getLensClient();
+
+    if (!sessionClient.isSessionClient()) {
+      return {
+        success: false,
+        error: "No authenticated session",
+      };
+    }
+
+    const result = await undoReaction(sessionClient, {
+      post: postId(postIdToUnreact),
+      reaction: reactionType,
+    });
+
+    if (result.isErr()) {
+      console.error("Error removing reaction:", result.error);
+      return {
+        success: false,
+        error: result.error.message,
+      };
+    }
+
+    return {
+      success: !!result.value,
+    };
+  } catch (error) {
+    console.error("Error in removeReaction:", error);
+    return {
+      success: false,
+      error: (error as Error).message,
+    };
+  }
+}
+
+/**
+ * Fetch reactions for a post
+ *
+ * @param postIdToFetch - ID of post to fetch reactions for
+ * @param reactionType - Type of reactions to fetch (optional)
+ * @param limit - Number of reactions to fetch (optional, default 20)
+ * @returns Array of reactions with account info
+ */
+export async function getPostReactions(
+  postIdToFetch: string,
+  reactionType?: PostReactionType,
+  limit: number = 20
+): Promise<any> {
+  try {
+    const client = await getLensClient();
+
+    const params: any = {
+      post: postId(postIdToFetch),
+      limit,
+    };
+
+    if (reactionType) {
+      params.reaction = reactionType;
+    }
+
+    const result = await fetchPostReactions(client, params);
+
+    if (result.isErr()) {
+      console.error("Error fetching reactions:", result.error);
+      throw new Error(result.error.message);
+    }
+
+    return {
+      items: result.value.items,
+      pageInfo: result.value.pageInfo,
+    };
+  } catch (error) {
+    console.error("Error in getPostReactions:", error);
+    throw error;
+  }
+}
+
+/**
  * Fetch a single post by ID
  *
  * @param postIdToFetch - The ID of the post to fetch
@@ -309,13 +449,14 @@ export async function getPostComments(
     const result = await fetchPostReferences(client, {
       referencedPost: postId(postIdToFetch),
       referenceTypes: [PostReferenceType.CommentOn],
-      limit,
     });
 
     if (result.isErr()) {
       console.error("Error fetching comments:", result.error);
       throw new Error(result.error.message);
     }
+
+    console.log(result);
 
     return {
       items: result.value.items,
@@ -378,7 +519,7 @@ export async function getLivestreamPosts(): Promise<LivestreamPost[]> {
     // Fetch posts with livestream metadata
     const result = await fetchPosts(client, {
       filter: {
-        apps: [evmAddress(process.env.NEXT_PUBLIC_APP_ADDRESS as string)]
+        apps: [evmAddress(process.env.NEXT_PUBLIC_APP_ADDRESS as string)],
       },
     });
 
@@ -399,7 +540,10 @@ export async function getLivestreamPosts(): Promise<LivestreamPost[]> {
     const livestreamPosts: LivestreamPost[] = result.value?.items
       .filter((post) => {
         // Filter for posts with livestream metadata
-        return post.__typename == "Post" && post.metadata.__typename === "LivestreamMetadata";
+        return (
+          post.__typename == "Post" &&
+          post.metadata.__typename === "LivestreamMetadata"
+        );
       })
       .map((post) => {
         const metadata = post.metadata; // LivestreamMetadata
@@ -588,4 +732,7 @@ export default {
   getAccountByUsername,
   canCommentOnPost,
   formatLivestreamPost,
+  reactToPost,
+  removeReaction,
+  getPostReactions,
 };

@@ -32,7 +32,7 @@ const DEFAULT_SPACE = {
 
 export default function SpacePage() {
   const { toast } = useToast();
-  const [reactions, setReactions] = useState({ likes: 42, hearts: 18 });
+  const [reactions, setReactions] = useState({ likes: 42});
   const [isLoading, setIsLoading] = useState(true);
   const [isPostLoading, setIsPostLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +45,6 @@ export default function SpacePage() {
   const { data: walletClient } = useWalletClient();
   const { id } = useParams();
 
-  console.log(id);
-  
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const mediaSourceRef = useRef<MediaSource | null>(null);
@@ -71,11 +69,9 @@ export default function SpacePage() {
 
     async function fetchLensPost() {
       setIsPostLoading(true);
-      console.log(decodeURIComponent(id as string));
-      
       try {
         // Get the post using the ID from params
-        const post = await getPost(decodeURIComponent(id as string) );
+        const post = await getPost(id as string);
         setLensPost(post);
         setLensPostId(post.id);
 
@@ -100,6 +96,10 @@ export default function SpacePage() {
             viewers: post.stats?.upvotes || 0,
             isLive: true, // Assuming live by default
           });
+
+          setReactions({likes: post.stats?.upvotes})
+
+          console.log(post);
 
           // Set creator
           setCreator(post.author);
@@ -295,7 +295,6 @@ export default function SpacePage() {
     try {
       const storageClient = initializeGroveClient();
       const updatedManifestUrl = storageClient.resolve(streamUri);
-      console.log(updatedManifestUrl);
 
       const response = await fetch(`${updatedManifestUrl}?t=${Date.now()}`, {
         cache: "no-store",
@@ -306,8 +305,6 @@ export default function SpacePage() {
       const newChunks = updatedManifest.chunks.filter(
         (c) => c.index > lastChunkIndexRef.current
       );
-
-      console.log("Found new chunks:", newChunks);
 
       for (const chunk of newChunks) {
         if (
@@ -378,7 +375,6 @@ export default function SpacePage() {
   }, []);
 
   const handleReaction = (type: "likes" | "hearts") => {
-    setReactions((prev) => ({ ...prev, [type]: prev[type] + 1 }));
 
     // If there's a post ID, you could potentially trigger a reaction on Lens
     if (lensPostId && walletClient) {
@@ -479,22 +475,10 @@ export default function SpacePage() {
                       <div>
                         <div className="flex items-center gap-2">
                           <h1 className="text-xl font-bold">{space.title}</h1>
-                          {space.isLive ? (
-                            <Badge
-                              variant="destructive"
-                              className="px-2 py-1 text-xs font-semibold"
-                            >
-                              LIVE
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="px-2 py-1 text-xs font-semibold"
-                            >
-                              ENDED
-                            </Badge>
-                          )}
                         </div>
+                        <p className="text-muted-foreground">
+                          {creator.metadata?.name || "Unnamed Creator"}
+                        </p>
                         <p className="text-muted-foreground">
                           {creator?.username?.value ||
                             (creator?.address
@@ -537,13 +521,6 @@ export default function SpacePage() {
                     >
                       <ThumbsUp className="mr-2 h-4 w-4" /> {reactions.likes}
                     </Button>
-                    <Button
-                      variant="outline"
-                      className="flex-1 rounded-full shadow-soft"
-                      onClick={() => handleReaction("hearts")}
-                    >
-                      <Heart className="mr-2 h-4 w-4" /> {reactions.hearts}
-                    </Button>
                     <Button className="flex-1 rounded-full shadow-soft">
                       Tip Creator
                     </Button>
@@ -559,62 +536,6 @@ export default function SpacePage() {
             </div>
 
             <div className="space-y-6">
-              {/* Creator Profile Card */}
-              {creator && (
-                <Card className="shadow-soft">
-                  <CardContent className="pt-6">
-                    <div className="flex items-center gap-4">
-                      <Avatar className="h-16 w-16">
-                        <AvatarImage
-                          src={
-                            creator.metadata?.picture?.__typename === "ImageSet"
-                              ? creator.metadata.picture.optimized?.uri
-                              : "/placeholder.svg"
-                          }
-                          alt={creator.username?.value || creator.address}
-                        />
-                        <AvatarFallback>
-                          {(creator.username?.value ||
-                            creator.address)[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <h2 className="text-xl font-bold">
-                          {creator.metadata?.name || "Unnamed Creator"}
-                        </h2>
-                        <p className="text-muted-foreground">
-                          {creator.username?.value ||
-                            `${creator.address.slice(
-                              0,
-                              6
-                            )}...${creator.address.slice(-4)}`}
-                        </p>
-                        {creator.metadata?.bio && (
-                          <p className="text-sm mt-2">{creator.metadata.bio}</p>
-                        )}
-                        <div className="flex items-center gap-2 mt-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="rounded-full text-xs"
-                            onClick={() =>
-                              window.open(
-                                `https://hey.xyz/u/${
-                                  creator.username?.value || creator.address
-                                }`,
-                                "_blank"
-                              )
-                            }
-                          >
-                            View Profile
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-
               {/* Lens Chat Component */}
               <LensChat
                 postId={lensPostId}
