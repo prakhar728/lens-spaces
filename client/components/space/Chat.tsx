@@ -249,14 +249,14 @@ export default function LensChat({
                   )}
                 </Avatar>
                 <div>
-                  <p className="text-sm font-medium">
+                  <span className="text-sm font-medium">
                     {msg.sender.username || msg.sender.address.slice(0, 6)}
                     {streamOwner && msg.sender.address === streamOwner && (
                       <Badge variant="secondary" className="ml-2 px-1 py-0 text-xs">
                         Creator
                       </Badge>
                     )}
-                  </p>
+                  </span>
                   <p className="text-sm">{msg.message}</p>
                 </div>
               </div>

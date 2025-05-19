@@ -5,7 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Heart, MessageSquare, Share2, ThumbsUp, Loader2 } from "lucide-react";
+import {
+  Heart,
+  MessageSquare,
+  Share2,
+  ThumbsUp,
+  Loader2,
+  DollarSign,
+} from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { StreamManifest } from "@/lib/lens/stream";
 import { useParams } from "next/navigation";
@@ -15,10 +22,12 @@ import {
   getPost,
   reactToPost,
   removeReaction,
+  tipPost,
 } from "@/lib/lens/lens";
 import { useWalletClient } from "wagmi";
 import LensChat from "@/components/space/Chat";
 import { PostReactionType } from "@lens-protocol/client";
+import { TipDialog } from "@/components/space/TipDialog";
 
 interface ChatMessage {
   id: string;
@@ -48,6 +57,8 @@ export default function SpacePage() {
   const [creator, setCreator] = useState<any>(null);
   const [lensPostId, setLensPostId] = useState<string | null>(null);
   const [lensPost, setLensPost] = useState<any>(null);
+  const [isTipDialogOpen, setIsTipDialogOpen] = useState(false);
+  const [isTippingLoading, setisTippingLoading] = useState(false);
   const { data: walletClient } = useWalletClient();
   const { id } = useParams();
 
@@ -456,6 +467,40 @@ export default function SpacePage() {
     }
   };
 
+  const handleTipConfirm = async (amount: string) => {
+    if (!lensPostId || !walletClient) return;
+
+    setisTippingLoading(true);
+
+    try {
+      // Use the lens.ts tipPost function
+      const currencyAddress = "0x6bDc36E20D267Ff0dd6097799f82e78907105e2F";
+      const result = await tipPost(walletClient, lensPostId, amount, currencyAddress, [{
+        address: process.env.NEXT_PUBLIC_REFERRER as string,
+        percent: 100
+      }]);
+
+      if (result.success) {
+        toast({
+          title: "Tip Sent",
+          description: "Your tip was sent successfully to the creator!",
+        });
+        setIsTipDialogOpen(false);
+      } else {
+        throw new Error(result.error || "Failed to send tip");
+      }
+    } catch (error) {
+      console.error("Error sending tip:", error);
+      toast({
+        title: "Tipping Failed",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setisTippingLoading(false);
+    }
+  };
+
   const handleShare = () => {
     navigator.clipboard.writeText(window.location.href).then(() => {
       toast({
@@ -600,7 +645,12 @@ export default function SpacePage() {
                       )}{" "}
                       {lensPost?.stats?.upvotes || 0}
                     </Button>
-                    <Button className="flex-1 rounded-full shadow-soft">
+                    <Button
+                      className="flex-1 rounded-full shadow-soft"
+                      onClick={() => setIsTipDialogOpen(true)}
+                      disabled={!walletClient || isTippingLoading}
+                    >
+                      <DollarSign className="mr-2 h-4 w-4" />
                       Tip Creator
                     </Button>
                   </div>
@@ -624,6 +674,13 @@ export default function SpacePage() {
             </div>
           </div>
         )}
+
+        <TipDialog
+          isOpen={isTipDialogOpen}
+          onClose={() => setIsTipDialogOpen(false)}
+          onConfirm={handleTipConfirm}
+          isLoading={isTippingLoading}
+        />
       </div>
     </main>
   );

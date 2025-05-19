@@ -13,6 +13,7 @@ import {
   PostReferenceType,
   Post,
   PostReactionType,
+  bigDecimal,
 } from "@lens-protocol/client";
 import {
   fetchPost,
@@ -24,6 +25,7 @@ import {
   fetchPostReactions,
   addReaction,
   undoReaction,
+  executePostAction,
 } from "@lens-protocol/client/actions";
 import { handleOperationWith } from "@lens-protocol/client/viem";
 import { liveStream, textOnly } from "@lens-protocol/metadata";
@@ -715,6 +717,79 @@ export function formatLivestreamPost(post: any): LivestreamPost {
   };
 }
 
+/**
+ * Send a tip to a post creator
+ * 
+ * @param postIdToTip - ID of post to tip 
+ * @param amount - Amount to tip
+ * @param currencyAddress - Currency contract address (optional, defaults to platform default)
+ * @param referrals - Optional referral addresses and percentages
+ * @returns Success status
+ */
+export async function tipPost(
+  walletClient: WalletClient,
+  postIdToTip: string,
+  amount: string,
+  currencyAddress?: string,
+  referrals?: { address: string; percent: number }[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const sessionClient = await getLensClient();
+    
+    if (!sessionClient.isSessionClient()) {
+      return {
+        success: false,
+        error: "No authenticated session"
+      };
+    }
+    
+    const tipParams: any = {
+      post: postId(postIdToTip),
+      action: {
+        tipping: {
+        }
+      }
+    };
+    
+    // Add currency and amount if provided
+    if (amount && currencyAddress) {
+      console.log(amount);
+      
+      tipParams.action.tipping.currency = evmAddress(currencyAddress);
+      tipParams.action.tipping.value = bigDecimal(amount);
+    }
+    
+    // Add referrals if provided
+    if (referrals && referrals.length > 0) {
+      tipParams.action.tipping.referrals = referrals.map(ref => ({
+        address: evmAddress(ref.address),
+        percent: ref.percent
+      }));
+    }
+    
+    const result = await executePostAction(sessionClient, tipParams)
+      .andThen(handleOperationWith(walletClient));
+    
+    if (result.isErr()) {
+      console.error("Error tipping post:", result.error);
+      return {
+        success: false,
+        error: result.error.message
+      };
+    }
+    
+    return {
+      success: true
+    };
+  } catch (error) {
+    console.error("Error in tipPost:", error);
+    return {
+      success: false,
+      error: (error as Error).message
+    };
+  }
+}
+
 export default {
   createTextPost,
   createStreamPost,
@@ -730,4 +805,5 @@ export default {
   reactToPost,
   removeReaction,
   getPostReactions,
+  tipPost
 };
