@@ -5,12 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Heart, MessageSquare, Share2, ThumbsUp } from "lucide-react";
+import { Heart, MessageSquare, Share2, ThumbsUp, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { StreamManifest } from "@/lib/lens/stream";
 import { useParams } from "next/navigation";
 import { initializeGroveClient } from "@/lib/lens/grove";
-import { getAccountByAddress, getPostsByAuthor } from "@/lib/lens/lens";
+import { getAccountByAddress, getPost } from "@/lib/lens/lens";
 import { useWalletClient } from "wagmi";
 import LensChat from "@/components/space/Chat";
 
@@ -33,16 +33,20 @@ const DEFAULT_SPACE = {
 export default function SpacePage() {
   const { toast } = useToast();
   const [reactions, setReactions] = useState({ likes: 42, hearts: 18 });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isPostLoading, setIsPostLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [space, setSpace] = useState(DEFAULT_SPACE);
   const [manifest, setManifest] = useState<StreamManifest | null>(null);
   const [viewerCount, setViewerCount] = useState(0);
   const [creator, setCreator] = useState<any>(null);
   const [lensPostId, setLensPostId] = useState<string | null>(null);
+  const [lensPost, setLensPost] = useState<any>(null);
   const { data: walletClient } = useWalletClient();
   const { id } = useParams();
 
+  console.log(id);
+  
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const sourceBufferRef = useRef<SourceBuffer | null>(null);
   const mediaSourceRef = useRef<MediaSource | null>(null);
@@ -61,54 +65,90 @@ export default function SpacePage() {
     }
   };
 
+  // First, fetch the post by ID
+  useEffect(() => {
+    if (!id) return;
+
+    async function fetchLensPost() {
+      setIsPostLoading(true);
+      console.log(decodeURIComponent(id as string));
+      
+      try {
+        // Get the post using the ID from params
+        const post = await getPost(decodeURIComponent(id as string) );
+        setLensPost(post);
+        setLensPostId(post.id);
+
+        // Extract stream URI from post metadata
+        if (post.metadata.__typename === "LivestreamMetadata") {
+          const streamUri = post.metadata.liveUrl || post.metadata.playbackUrl;
+          if (!streamUri) {
+            throw new Error("No stream URL found in post metadata");
+          }
+
+          setStreamUri(streamUri);
+
+          // Set space data from post
+          setSpace({
+            id: post.id,
+            title: post.metadata.title || "Untitled Stream",
+            creator: post.author.address,
+            creatorAvatar:
+              post.author.metadata?.picture?.__typename === "ImageSet"
+                ? post.author.metadata.picture.optimized?.uri
+                : "/placeholder.svg?height=40&width=40",
+            viewers: post.stats?.upvotes || 0,
+            isLive: true, // Assuming live by default
+          });
+
+          // Set creator
+          setCreator(post.author);
+
+          // Initialize stream with the URI from post
+          if (videoRef.current) {
+            initializeStream(streamUri);
+          } else {
+            // Wait for video element to be available
+            const waitForVideoElement = async () => {
+              while (!videoRef.current) {
+                await new Promise((r) => setTimeout(r, 50));
+              }
+              initializeStream(streamUri);
+            };
+            waitForVideoElement();
+          }
+        } else {
+          throw new Error("This post does not contain livestream metadata");
+        }
+      } catch (error) {
+        console.error("Error fetching post:", error);
+        setError(`Failed to load stream: ${(error as Error).message}`);
+      } finally {
+        setIsPostLoading(false);
+      }
+    }
+
+    fetchLensPost();
+  }, [id]);
+
   async function initializeStream(streamUri: string) {
     try {
       setIsLoading(true);
-      setStreamUri(streamUri);
       const storageClient = initializeGroveClient();
       const manifestUrl = storageClient.resolve(streamUri);
       const res = await fetch(manifestUrl);
       const manifest: StreamManifest = await res.json();
       setManifest(manifest);
-      setSpace({
-        id: streamUri,
-        title: manifest.title,
-        creator: manifest.creator,
-        creatorAvatar: "/placeholder.svg?height=40&width=40",
-        viewers: Math.floor(Math.random() * 50) + 5,
+
+      // Update space status based on manifest
+      setSpace((prev) => ({
+        ...prev,
         isLive: manifest.status === "live",
-      });
-      setViewerCount(Math.floor(Math.random() * 50) + 5);
+      }));
 
-      // Fetch creator details
-      if (manifest.creator) {
-        try {
-          const creatorAccount = await getAccountByAddress(manifest.creator);
-          setCreator(creatorAccount);
-
-          // Try to find a Lens post for this stream URI
-          try {
-            const creatorPosts = await getPostsByAuthor(manifest.creator);
-            // Filter for posts that might contain our stream URI
-            const matchingPost = creatorPosts.items.find((post: any) => {
-              // Check if this post references our stream
-              if (post.metadata.__typename === "LivestreamMetadata") {
-                const liveUrl =
-                  post.metadata.liveUrl || post.metadata.playbackUrl;
-                return liveUrl === streamUri;
-              }
-              return false;
-            });
-
-            if (matchingPost) {
-              setLensPostId(matchingPost.id);
-            }
-          } catch (error) {
-            console.error("Error fetching creator posts:", error);
-          }
-        } catch (error) {
-          console.error("Error fetching creator account:", error);
-        }
+      // Set stats from lens post if available
+      if (lensPost) {
+        setViewerCount(lensPost.stats?.upvotes || 0);
       }
 
       const mediaSource = new MediaSource();
@@ -117,6 +157,7 @@ export default function SpacePage() {
       const video = videoRef.current!;
       video.src = URL.createObjectURL(mediaSource);
       console.log("Assigned video.src:", video.src);
+
       video.addEventListener("loadedmetadata", () => {
         console.log("🎥 loadedmetadata: duration =", video.duration);
       });
@@ -313,6 +354,12 @@ export default function SpacePage() {
           }
         }
         clearInterval(pollingRef.current!);
+
+        // Update space status
+        setSpace((prev) => ({
+          ...prev,
+          isLive: false,
+        }));
       }
     } catch (err) {
       console.error("Polling error:", err);
@@ -320,18 +367,6 @@ export default function SpacePage() {
   }
 
   useEffect(() => {
-    if (!id) return;
-    const streamUri = decodeURIComponent(id as string);
-
-    const waitForVideoElement = async () => {
-      while (!videoRef.current) {
-        await new Promise((r) => setTimeout(r, 50));
-      }
-      initializeStream(streamUri);
-    };
-
-    waitForVideoElement();
-
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current);
       if (videoRef.current) {
@@ -340,7 +375,7 @@ export default function SpacePage() {
         videoRef.current.load();
       }
     };
-  }, [id]);
+  }, []);
 
   const handleReaction = (type: "likes" | "hearts") => {
     setReactions((prev) => ({ ...prev, [type]: prev[type] + 1 }));
@@ -372,204 +407,225 @@ export default function SpacePage() {
     <main className="min-h-screen pt-20 pb-10 px-4">
       <Navbar showWalletConnect />
       <div className="container max-w-6xl mx-auto mt-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <Card className="overflow-hidden shadow-soft">
-              <div className="aspect-video bg-black flex items-center justify-center text-white relative">
-                <video
-                  ref={videoRef}
-                  className="w-full h-full object-cover"
-                  playsInline
-                  controls
-                  autoPlay
-                />
-                {(isLoading || error) && (
-                  <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center z-10">
-                    {isLoading ? (
-                      <div className="flex flex-col items-center">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-2"></div>
-                        <p>Loading stream...</p>
-                      </div>
-                    ) : (
-                      <div className="text-center p-6">
-                        <p className="text-red-500 font-semibold mb-2">
-                          {error}
-                        </p>
-                        <Button
-                          variant="outline"
-                          className="mt-4"
-                          onClick={() => window.location.reload()}
-                        >
-                          Try Again
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            <Card className="shadow-soft">
-              <CardContent className="pt-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="h-12 w-12">
-                      <AvatarImage
-                        src={
-                          creator?.metadata?.picture?.__typename === "ImageSet"
-                            ? creator.metadata.picture.optimized?.uri
-                            : space.creatorAvatar
-                        }
-                        alt={creator?.username?.value || space.creator}
-                      />
-                      <AvatarFallback>
-                        {(creator?.username?.value ||
-                          space.creator)[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h1 className="text-xl font-bold">{space.title}</h1>
-                        {space.isLive ? (
-                          <Badge
-                            variant="destructive"
-                            className="px-2 py-1 text-xs font-semibold"
-                          >
-                            LIVE
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="px-2 py-1 text-xs font-semibold"
-                          >
-                            ENDED
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="text-muted-foreground">
-                        {creator?.username?.value ||
-                          (creator?.address
-                            ? `${creator.address.slice(
-                                0,
-                                6
-                              )}...${creator.address.slice(-4)}`
-                            : space.creator)}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {viewerCount} viewers
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      className="rounded-full shadow-soft"
-                      onClick={handleShare}
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="mt-6 flex gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-full shadow-soft"
-                    onClick={() => handleReaction("likes")}
-                  >
-                    <ThumbsUp className="mr-2 h-4 w-4" /> {reactions.likes}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="flex-1 rounded-full shadow-soft"
-                    onClick={() => handleReaction("hearts")}
-                  >
-                    <Heart className="mr-2 h-4 w-4" /> {reactions.hearts}
-                  </Button>
-                  <Button className="flex-1 rounded-full shadow-soft">
-                    Tip Creator
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+        {isPostLoading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <Loader2 className="h-12 w-12 animate-spin mb-4 text-primary" />
+            <p className="text-muted-foreground">Loading stream...</p>
           </div>
+        ) : error && !streamUri ? (
+          <div className="text-center py-20">
+            <p className="text-red-500 font-semibold mb-4">{error}</p>
+            <Button variant="outline" onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              <Card className="overflow-hidden shadow-soft">
+                <div className="aspect-video bg-black flex items-center justify-center text-white relative">
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover"
+                    playsInline
+                    controls
+                    autoPlay
+                  />
+                  {(isLoading || error) && (
+                    <div className="absolute inset-0 bg-black bg-opacity-80 flex items-center justify-center z-10">
+                      {isLoading ? (
+                        <div className="flex flex-col items-center">
+                          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mb-2"></div>
+                          <p>Loading stream...</p>
+                        </div>
+                      ) : (
+                        <div className="text-center p-6">
+                          <p className="text-red-500 font-semibold mb-2">
+                            {error}
+                          </p>
+                          <Button
+                            variant="outline"
+                            className="mt-4"
+                            onClick={() => window.location.reload()}
+                          >
+                            Try Again
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Card>
 
-          <div className="space-y-6">
-            {/* Creator Profile Card */}
-            {creator && (
               <Card className="shadow-soft">
                 <CardContent className="pt-6">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-16 w-16">
-                      <AvatarImage
-                        src={
-                          creator.metadata?.picture?.__typename === "ImageSet"
-                            ? creator.metadata.picture.optimized?.uri
-                            : "/placeholder.svg"
-                        }
-                        alt={creator.username?.value || creator.address}
-                      />
-                      <AvatarFallback>
-                        {(creator.username?.value ||
-                          creator.address)[0]?.toUpperCase()}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h2 className="text-xl font-bold">
-                        {creator.metadata?.name || "Unnamed Creator"}
-                      </h2>
-                      <p className="text-muted-foreground">
-                        {creator.username?.value ||
-                          `${creator.address.slice(
-                            0,
-                            6
-                          )}...${creator.address.slice(-4)}`}
-                      </p>
-                      {creator.metadata?.bio && (
-                        <p className="text-sm mt-2">{creator.metadata.bio}</p>
-                      )}
-                      <div className="flex items-center gap-2 mt-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full text-xs"
-                          onClick={() =>
-                            window.open(
-                              `https://hey.xyz/u/${
-                                creator.username?.value || creator.address
-                              }`,
-                              "_blank"
-                            )
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-start gap-4">
+                      <Avatar className="h-12 w-12">
+                        <AvatarImage
+                          src={
+                            creator?.metadata?.picture?.__typename ===
+                            "ImageSet"
+                              ? creator.metadata.picture.optimized?.uri
+                              : space.creatorAvatar
                           }
-                        >
-                          View Profile
-                        </Button>
+                          alt={creator?.username?.value || space.creator}
+                        />
+                        <AvatarFallback>
+                          {(creator?.username?.value ||
+                            space.creator)[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h1 className="text-xl font-bold">{space.title}</h1>
+                          {space.isLive ? (
+                            <Badge
+                              variant="destructive"
+                              className="px-2 py-1 text-xs font-semibold"
+                            >
+                              LIVE
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="px-2 py-1 text-xs font-semibold"
+                            >
+                              ENDED
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-muted-foreground">
+                          {creator?.username?.value ||
+                            (creator?.address
+                              ? `${creator.address.slice(
+                                  0,
+                                  6
+                                )}...${creator.address.slice(-4)}`
+                              : space.creator)}
+                        </p>
+                        {lensPost && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            <span className="flex items-center gap-1">
+                              <ThumbsUp className="h-3 w-3" />{" "}
+                              {lensPost.stats?.upvotes || 0}
+                              <span className="mx-2">•</span>
+                              <MessageSquare className="h-3 w-3" />{" "}
+                              {lensPost.stats?.comments || 0}
+                            </span>
+                          </p>
+                        )}
                       </div>
                     </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        className="rounded-full shadow-soft"
+                        onClick={handleShare}
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
+
+                  <div className="mt-6 flex gap-3">
+                    <Button
+                      variant="outline"
+                      className="flex-1 rounded-full shadow-soft"
+                      onClick={() => handleReaction("likes")}
+                    >
+                      <ThumbsUp className="mr-2 h-4 w-4" /> {reactions.likes}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="flex-1 rounded-full shadow-soft"
+                      onClick={() => handleReaction("hearts")}
+                    >
+                      <Heart className="mr-2 h-4 w-4" /> {reactions.hearts}
+                    </Button>
+                    <Button className="flex-1 rounded-full shadow-soft">
+                      Tip Creator
+                    </Button>
+                  </div>
+
+                  {lensPost?.metadata?.content && (
+                    <div className="mt-4 text-sm">
+                      <p>{lensPost.metadata.content}</p>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
-            )}
+            </div>
 
-            {/* Lens Chat Component */}
-            <LensChat
-              postId={lensPostId}
-              isLive={space.isLive}
-              viewerCount={viewerCount}
-              height="h-[calc(100vh-350px)]"
-              streamOwner={manifest?.creator}
-            />
+            <div className="space-y-6">
+              {/* Creator Profile Card */}
+              {creator && (
+                <Card className="shadow-soft">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center gap-4">
+                      <Avatar className="h-16 w-16">
+                        <AvatarImage
+                          src={
+                            creator.metadata?.picture?.__typename === "ImageSet"
+                              ? creator.metadata.picture.optimized?.uri
+                              : "/placeholder.svg"
+                          }
+                          alt={creator.username?.value || creator.address}
+                        />
+                        <AvatarFallback>
+                          {(creator.username?.value ||
+                            creator.address)[0]?.toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <h2 className="text-xl font-bold">
+                          {creator.metadata?.name || "Unnamed Creator"}
+                        </h2>
+                        <p className="text-muted-foreground">
+                          {creator.username?.value ||
+                            `${creator.address.slice(
+                              0,
+                              6
+                            )}...${creator.address.slice(-4)}`}
+                        </p>
+                        {creator.metadata?.bio && (
+                          <p className="text-sm mt-2">{creator.metadata.bio}</p>
+                        )}
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full text-xs"
+                            onClick={() =>
+                              window.open(
+                                `https://hey.xyz/u/${
+                                  creator.username?.value || creator.address
+                                }`,
+                                "_blank"
+                              )
+                            }
+                          >
+                            View Profile
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
-            {!lensPostId && (
-              <div className="text-center text-muted-foreground p-4">
-                <p>This stream doesn't have a Lens post yet.</p>
-                <p className="text-sm">
-                  Chat functionality is powered by Lens Protocol comments.
-                </p>
-              </div>
-            )}
+              {/* Lens Chat Component */}
+              <LensChat
+                postId={lensPostId}
+                isLive={space.isLive}
+                viewerCount={lensPost?.stats?.upvotes || 0}
+                height="h-[calc(100vh-350px)]"
+                streamOwner={creator?.address}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </main>
   );

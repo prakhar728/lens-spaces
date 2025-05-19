@@ -117,7 +117,7 @@ export default function ExplorePage() {
 
   // Function to render stream cards
   const renderStreamCard = (space: LivestreamPost) => (
-    <Link href={`/space/${space.id}}`} key={space.id}>
+    <Link href={`/space/${space.id}`} key={space.id}>
       <Card className="overflow-hidden shadow-soft hover:shadow-soft-lg transition-shadow card-hover">
         <div className="relative aspect-video bg-muted flex items-center justify-center">
           {space.ownerAvatar ? (
