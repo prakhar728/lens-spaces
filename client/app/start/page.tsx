@@ -245,6 +245,8 @@ export default function StartSpace() {
 
   // Handle post creation success
   const handlePostCreated = (newPostId: string) => {
+    console.log(newPostId);
+    
     setPostId(newPostId);
     setShowChat(true);
 

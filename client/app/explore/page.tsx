@@ -1,5 +1,4 @@
 "use client";
-
 import type React from "react";
 import { useState, useEffect } from "react";
 import { Navbar } from "@/components/navbar";
@@ -8,14 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Eye, Loader2, Search, Users } from "lucide-react";
+import { MessageSquare, Loader2, Search, Users, ThumbsUp } from "lucide-react";
 import Link from "next/link";
-import {
-  getLivestreamPosts,
-} from "@/lib/lens/lens";
+import { getLivestreamPosts } from "@/lib/lens/lens";
 import { useWalletClient } from "wagmi";
 
-// LivestreamPost type from lens.ts
+// LivestreamPost type based on your getLivestreamPosts function
 interface LivestreamPost {
   id: string;
   title: string;
@@ -26,9 +23,9 @@ interface LivestreamPost {
   ownerAvatar?: string;
   createdAt: Date;
   commentCount: number;
-  viewerCount?: number;
+  upvotes?: number;
+  tips?: number;
   isLive?: boolean;
-  thumbnail?: string;
 }
 
 export default function ExplorePage() {
@@ -47,28 +44,24 @@ export default function ExplorePage() {
     async function fetchLivestreams() {
       setLoading(true);
       setError(null);
-
       try {
         // Fetch livestream posts from Lens Protocol
         const livestreams = await getLivestreamPosts();
 
-        // Add default viewer count and thumbnail for UI
+        // Keep only the data available from the API
         const processedStreams = livestreams.map((stream) => ({
           ...stream,
-          viewerCount: Math.floor(Math.random() * 150) + 5, // Mock viewer count until we have real-time data
-          isLive: true, // Assume all are live for now, can be refined with actual status
-          thumbnail: "/placeholder.svg?height=200&width=350", // Default thumbnail
         }));
 
         setAllSpaces(processedStreams);
         setFilteredSpaces(processedStreams);
 
-        // Set some trending streams (for now just sort by viewer count)
-        setTrendingSpaces(
-          [...processedStreams]
-            .sort((a, b) => (b.viewerCount || 0) - (a.viewerCount || 0))
-            .slice(0, 6)
+        // Sort by upvotes for trending (if available)
+        const sortedStreams = [...processedStreams].sort(
+          (a, b) => (b.upvotes || 0) - (a.upvotes || 0)
         );
+
+        setTrendingSpaces(sortedStreams.slice(0, 6));
       } catch (err) {
         console.error("Error fetching livestreams:", err);
         setError("Failed to load streams. Please try again later.");
@@ -83,19 +76,15 @@ export default function ExplorePage() {
   // Fetch following streams if wallet is connected
   useEffect(() => {
     async function fetchFollowingStreams() {
-      if (!walletClient) {
+      if (!walletClient || allSpaces.length === 0) {
         setFollowingSpaces([]);
         return;
       }
 
       try {
-        // For now, just use a sample of all streams
-        // In a real app, you would fetch posts from followed accounts
-        const randomSample = [...allSpaces]
-          .sort(() => 0.5 - Math.random())
-          .slice(0, Math.min(4, allSpaces.length));
-
-        setFollowingSpaces(randomSample);
+        // For now, we'll use a subset of streams as an example
+        // In production, this would be based on actual follow relationships
+        setFollowingSpaces(allSpaces.slice(0, Math.min(4, allSpaces.length)));
       } catch (err) {
         console.error("Error fetching following streams:", err);
       }
@@ -128,21 +117,17 @@ export default function ExplorePage() {
 
   // Function to render stream cards
   const renderStreamCard = (space: LivestreamPost) => (
-    <Link href={`/space/${encodeURIComponent(space.streamUri)}`} key={space.id}>
+    <Link href={`/space/${space.id}}`} key={space.id}>
       <Card className="overflow-hidden shadow-soft hover:shadow-soft-lg transition-shadow card-hover">
-        <div className="relative aspect-video bg-muted">
-          <img
-            src={space.thumbnail || "/placeholder.svg"}
-            alt={space.title}
-            className="w-full h-full object-cover"
-          />
-          {space.isLive && (
-            <Badge
-              variant="destructive"
-              className="absolute top-2 right-2 px-2 py-1 text-xs font-semibold"
-            >
-              LIVE
-            </Badge>
+        <div className="relative aspect-video bg-muted flex items-center justify-center">
+          {space.ownerAvatar ? (
+            <img
+              src={space.ownerAvatar}
+              alt={space.title}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="text-muted-foreground text-sm">No thumbnail</div>
           )}
         </div>
         <CardContent className="pt-4">
@@ -153,11 +138,25 @@ export default function ExplorePage() {
                 -4
               )}`}
           </p>
+          {space.description && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+              {space.description}
+            </p>
+          )}
         </CardContent>
-        <CardFooter className="pt-0 text-sm text-muted-foreground">
+        <CardFooter className="pt-0 flex justify-between text-sm text-muted-foreground">
           <div className="flex items-center">
-            <Eye className="h-4 w-4 mr-1" />
-            <span>{space.viewerCount || 0} viewers</span>
+            <MessageSquare className="h-4 w-4 mr-1" />
+            <span>{space.commentCount || 0}</span>
+          </div>
+          {space.upvotes !== undefined && (
+            <div className="flex items-center">
+              <ThumbsUp className="h-4 w-4 mr-1" />
+              <span>{space.upvotes}</span>
+            </div>
+          )}
+          <div className="text-xs">
+            {new Date(space.createdAt).toLocaleDateString()}
           </div>
         </CardFooter>
       </Card>
@@ -167,11 +166,9 @@ export default function ExplorePage() {
   return (
     <main className="min-h-screen pt-20 pb-10 px-4">
       <Navbar showWalletConnect />
-
       <div className="container max-w-6xl mx-auto mt-8">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <h1 className="text-3xl font-bold">Explore Spaces</h1>
-
           <form onSubmit={handleSearch} className="w-full md:w-auto">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -184,7 +181,6 @@ export default function ExplorePage() {
             </div>
           </form>
         </div>
-
         <Tabs
           defaultValue="all"
           className="mb-8"
@@ -195,7 +191,6 @@ export default function ExplorePage() {
             <TabsTrigger value="trending">Trending</TabsTrigger>
             <TabsTrigger value="following">Following</TabsTrigger>
           </TabsList>
-
           <TabsContent value="all" className="mt-6">
             {loading ? (
               <div className="flex justify-center items-center py-20">
@@ -237,7 +232,6 @@ export default function ExplorePage() {
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="trending" className="mt-6">
             {loading ? (
               <div className="flex justify-center items-center py-20">
@@ -255,7 +249,6 @@ export default function ExplorePage() {
               </div>
             )}
           </TabsContent>
-
           <TabsContent value="following" className="mt-6">
             {!walletClient ? (
               <div className="flex flex-col items-center justify-center h-40 bg-muted/30 rounded-lg">

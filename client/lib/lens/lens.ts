@@ -192,7 +192,7 @@ export async function createStreamPost(
     // Return success with post ID
     return {
       success: true,
-      postId: result.value.id,
+      postId: result.value,
     };
   } catch (error) {
     console.error("Error in createStreamPost:", error);

@@ -45,6 +45,9 @@ export function StreamPostButton({
         description
       });
 
+      console.log(result);
+      
+
       if (result.success && result.postId) {
         setPostCreated(true);
         setPostId(result.postId);
