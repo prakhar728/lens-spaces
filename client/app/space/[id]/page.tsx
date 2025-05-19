@@ -10,9 +10,15 @@ import { useToast } from "@/components/ui/use-toast";
 import { StreamManifest } from "@/lib/lens/stream";
 import { useParams } from "next/navigation";
 import { initializeGroveClient } from "@/lib/lens/grove";
-import { getAccountByAddress, getPost } from "@/lib/lens/lens";
+import {
+  getAccountByAddress,
+  getPost,
+  reactToPost,
+  removeReaction,
+} from "@/lib/lens/lens";
 import { useWalletClient } from "wagmi";
 import LensChat from "@/components/space/Chat";
+import { PostReactionType } from "@lens-protocol/client";
 
 interface ChatMessage {
   id: string;
@@ -32,7 +38,7 @@ const DEFAULT_SPACE = {
 
 export default function SpacePage() {
   const { toast } = useToast();
-  const [reactions, setReactions] = useState({ likes: 42});
+  const [isReactionLoading, setIsReactionLoading] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isPostLoading, setIsPostLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -96,10 +102,6 @@ export default function SpacePage() {
             viewers: post.stats?.upvotes || 0,
             isLive: true, // Assuming live by default
           });
-
-          setReactions({likes: post.stats?.upvotes})
-
-          console.log(post);
 
           // Set creator
           setCreator(post.author);
@@ -300,7 +302,6 @@ export default function SpacePage() {
         cache: "no-store",
       });
       const updatedManifest: StreamManifest = await response.json();
-      console.log(updatedManifest);
 
       const newChunks = updatedManifest.chunks.filter(
         (c) => c.index > lastChunkIndexRef.current
@@ -374,20 +375,85 @@ export default function SpacePage() {
     };
   }, []);
 
-  const handleReaction = (type: "likes" | "hearts") => {
+  const handleReaction = async (type: "likes" | "hearts") => {
+    if (!lensPostId || !walletClient || isReactionLoading) return;
 
-    // If there's a post ID, you could potentially trigger a reaction on Lens
-    if (lensPostId && walletClient) {
-      // This would be where you integrate with your lens.ts functions for reactions
-      // Example: createReaction(walletClient, lensPostId, type === "likes" ? "UPVOTE" : "LOVE");
+    setIsReactionLoading(true);
+
+    try {
+      const hasAlreadyReacted = lensPost?.operations?.hasUpvoted;
+
+      if (hasAlreadyReacted) {
+        // Remove the reaction
+        const result = await removeReaction(
+          lensPostId,
+          type === "likes" ? PostReactionType.Upvote : PostReactionType.Upvote
+        );
+
+        if (result.success) {
+          // Update local state
+          setLensPost((prev) => ({
+            ...prev,
+            operations: {
+              ...prev.operations,
+              hasUpvoted: false,
+            },
+            stats: {
+              ...prev.stats,
+              upvotes: Math.max(0, (prev.stats?.upvotes || 0) - 1),
+            },
+          }));
+
+          toast({
+            title: "Reaction Removed",
+            description: `Your ${
+              type === "likes" ? "like" : "heart"
+            } was removed.`,
+          });
+        } else {
+          throw new Error(result.error || "Failed to remove reaction");
+        }
+      } else {
+        // Add the reaction
+        const result = await reactToPost(
+          lensPostId,
+          type === "likes" ? PostReactionType.Upvote : PostReactionType.Upvote
+        );
+
+        if (result.success) {
+          // Update local state
+          setLensPost((prev) => ({
+            ...prev,
+            operations: {
+              ...prev.operations,
+              hasUpvoted: true,
+            },
+            stats: {
+              ...prev.stats,
+              upvotes: (prev.stats?.upvotes || 0) + 1,
+            },
+          }));
+
+          toast({
+            title: "Reaction Sent",
+            description: `Your ${
+              type === "likes" ? "like" : "heart"
+            } was sent to the creator!`,
+          });
+        } else {
+          throw new Error(result.error || "Failed to add reaction");
+        }
+      }
+    } catch (error) {
+      console.error("Error handling reaction:", error);
+      toast({
+        title: "Reaction Failed",
+        description: (error as Error).message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsReactionLoading(false);
     }
-
-    toast({
-      title: "Reaction Sent",
-      description: `Your ${
-        type === "likes" ? "like" : "heart"
-      } was sent to the creator!`,
-    });
   };
 
   const handleShare = () => {
@@ -452,7 +518,6 @@ export default function SpacePage() {
                   )}
                 </div>
               </Card>
-
               <Card className="shadow-soft">
                 <CardContent className="pt-6">
                   <div className="flex items-start justify-between">
@@ -512,20 +577,33 @@ export default function SpacePage() {
                       </Button>
                     </div>
                   </div>
-
                   <div className="mt-6 flex gap-3">
                     <Button
-                      variant="outline"
+                      variant={
+                        lensPost?.operations?.hasUpvoted ? "default" : "outline"
+                      }
                       className="flex-1 rounded-full shadow-soft"
                       onClick={() => handleReaction("likes")}
+                      disabled={!walletClient || isReactionLoading}
                     >
-                      <ThumbsUp className="mr-2 h-4 w-4" /> {reactions.likes}
+                      {isReactionLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <ThumbsUp
+                          className="mr-2 h-4 w-4"
+                          fill={
+                            lensPost?.operations?.hasUpvoted
+                              ? "currentColor"
+                              : "none"
+                          }
+                        />
+                      )}{" "}
+                      {lensPost?.stats?.upvotes || 0}
                     </Button>
                     <Button className="flex-1 rounded-full shadow-soft">
                       Tip Creator
                     </Button>
                   </div>
-
                   {lensPost?.metadata?.content && (
                     <div className="mt-4 text-sm">
                       <p>{lensPost.metadata.content}</p>
@@ -534,7 +612,6 @@ export default function SpacePage() {
                 </CardContent>
               </Card>
             </div>
-
             <div className="space-y-6">
               {/* Lens Chat Component */}
               <LensChat

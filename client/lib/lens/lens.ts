@@ -156,14 +156,12 @@ export async function createStreamPost(
   try {
     // Get authenticated session client
     const sessionClient = await getLensClient();
-
     if (!sessionClient.isSessionClient()) {
       return {
         success: false,
         error: "No authenticated session",
       };
     }
-
     // Create livestream metadata
     const metadata = liveStream({
       content:
@@ -173,18 +171,16 @@ export async function createStreamPost(
       playbackUrl: options.streamUri,
       startsAt: new Date().toISOString().split(".")[0] + "Z",
     });
-
     // Upload metadata to Grove storage
     const acl = createACL(ACLType.IMMUTABLE, ChainId.MAINNET);
     const { uri: contentUri } = await uploadAsJson(metadata, { acl });
 
-    // Create the livestream post
+    // Create the livestream post with TippingPostAction
     const result = await post(sessionClient, {
-      contentUri: uri(contentUri),
+      contentUri: uri(contentUri)
     }).andThen(handleOperationWith(walletClient));
 
     console.log(result);
-
     if (result.isErr()) {
       console.error("Error creating livestream post:", result.error);
       return {
@@ -192,11 +188,10 @@ export async function createStreamPost(
         error: result.error.message,
       };
     }
-
     // Return success with post ID
     return {
       success: true,
-      postId: result.value,
+      postId: result.value.id, // Make sure to access the ID correctly
     };
   } catch (error) {
     console.error("Error in createStreamPost:", error);
