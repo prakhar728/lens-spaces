@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Navbar } from "@/components/navbar"
 import { ArrowRight, AirplayIcon as Broadcast, Coins, Shield } from "lucide-react"
@@ -20,6 +21,20 @@ export default function Home() {
             A decentralized streaming platform built on Lens Protocol. Create, share, and own your content without
             intermediaries.
           </p>
+
+          <h2>Powered by</h2>
+          
+          {/* Grove's Image */}
+          <div className="mb-8 flex justify-center">
+            <Image 
+              src="grove.jpeg" 
+              alt="Grove" 
+              width={300} 
+              height={200}
+              className="rounded-lg shadow-soft"
+            />
+          </div>
+          
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button asChild size="lg" className="rounded-full shadow-soft">
               <Link href="/start">

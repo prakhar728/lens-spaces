@@ -7,6 +7,7 @@ import { getLensClient } from "@/lib/lens/client";
 import { fetchAccount } from "@lens-protocol/client/actions";
 import { Login } from "./login";
 import { useEffect, useState } from "react";
+import Image from "next/image";
 
 interface NavbarProps {
   showWalletConnect?: boolean;
@@ -26,7 +27,7 @@ export function Navbar({ showWalletConnect = false }: NavbarProps) {
       const account = fetchAccount(client, {
         address: user.address,
       }).unwrapOr(null);
-      
+
       setAccount(account);
     }
 
@@ -37,7 +38,13 @@ export function Navbar({ showWalletConnect = false }: NavbarProps) {
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-md border-b">
       <div className="container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <LensSpacesLogo className="h-8 w-8" />
+          <Image
+            src="logo-without-bg.png"
+            alt="Lens Spaces Logo"
+            width={32}
+            height={32}
+            className="h-8 w-8"
+          />
           <span className="font-semibold text-lg hidden sm:inline-block">
             Lens Spaces
           </span>
