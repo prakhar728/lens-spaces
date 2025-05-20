@@ -80,8 +80,6 @@ export async function initializeStream(
       userAddress
     );
 
-    console.log(updateACL);
-
     // Upload initial manifest to Grove
     const response = await uploadAsJson(manifest, { acl: updateACL });
     console.log(

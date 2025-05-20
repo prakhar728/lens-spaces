@@ -37,16 +37,13 @@ export function StreamPostButton({
     setIsCreating(true);
     
     try {
-      const description = `Hey! I'm live streaming "${title}". Come join and chat with me!`;
+      const description = `Hey! I'm live streaming "${title}". Come join and chat with me! \nJoin me on  https://lens-spaces.vercel.app/explore!`;
       
       const result = await createStreamPost(walletClient, {
         title,
         streamUri,
         description
       });
-
-      console.log(result);
-      
 
       if (result.success && result.postId) {
         setPostCreated(true);

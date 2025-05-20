@@ -169,7 +169,6 @@ export default function SpacePage() {
 
       const video = videoRef.current!;
       video.src = URL.createObjectURL(mediaSource);
-      console.log("Assigned video.src:", video.src);
 
       video.addEventListener("loadedmetadata", () => {
         console.log("🎥 loadedmetadata: duration =", video.duration);
@@ -201,7 +200,6 @@ export default function SpacePage() {
       });
 
       setTimeout(() => {
-        console.log("Attempting to play video manually...");
         video.play().catch((err) => console.warn("Autoplay blocked:", err));
       }, 1000);
 
@@ -222,15 +220,6 @@ export default function SpacePage() {
 
             const sourceBuffer = mediaSource.addSourceBuffer(mime);
             sourceBufferRef.current = sourceBuffer;
-
-            console.log(
-              "SourceBuffer created. sourceBuffers.length:",
-              mediaSource.sourceBuffers.length
-            );
-            console.log(
-              "activeSourceBuffers.length:",
-              mediaSource.sourceBuffers
-            );
 
             await loadInitialChunks(
               manifest,
@@ -272,20 +261,9 @@ export default function SpacePage() {
       const buffer = await chunkRes.arrayBuffer();
 
       await new Promise<void>((resolve) => {
-        console.log("Chunk buffer size:", buffer.byteLength);
-        console.log(
-          "MediaSource state before append:",
-          mediaSourceRef.current?.readyState
-        );
-        console.log(
-          "SourceBuffer updating before append:",
-          sourceBuffer.updating
-        );
-
         sourceBuffer.addEventListener(
           "updateend",
           () => {
-            console.log("updateend fired");
             resolve();
           },
           { once: true }
@@ -303,8 +281,6 @@ export default function SpacePage() {
   }
 
   async function pollManifestForNewChunks(streamUri: string) {
-    console.log("Polling");
-
     try {
       const storageClient = initializeGroveClient();
       const updatedManifestUrl = storageClient.resolve(streamUri);

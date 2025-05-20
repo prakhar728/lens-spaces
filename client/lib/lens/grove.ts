@@ -133,7 +133,6 @@ export async function uploadAsJson(
 ): Promise<FileUploadResponse> {
   // Ensure client is initialized
   const client = initializeGroveClient();
-  console.log(options);
   
   try {
     return await client.uploadAsJson(data, options);

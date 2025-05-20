@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Navbar } from "@/components/navbar";
 import { Card, CardContent } from "@/components/ui/card";
-import { Share, StopCircle } from "lucide-react";
+import { Share, StopCircle, Video, VideoOff, Mic, MicOff } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { StreamRecorder } from "@/lib/lens/stream";
 import { fetchAccount } from "@lens-protocol/client/actions";
@@ -22,7 +22,6 @@ export default function StartSpace() {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState(0);
   const [streamStartTime, setstreamStartTime] = useState(0);
   const [account, setAccount] = useState<any>(null);
   const [streamUri, setStreamUri] = useState<string | null>(null);
@@ -30,6 +29,8 @@ export default function StartSpace() {
   const [isDownloadMode, setIsDownloadMode] = useState(false);
   const [postId, setPostId] = useState<string | null>(null);
   const [showChat, setShowChat] = useState(false);
+  const [videoEnabled, setVideoEnabled] = useState(true);
+  const [audioEnabled, setAudioEnabled] = useState(true);
 
   // Video preview reference
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -66,6 +67,26 @@ export default function StartSpace() {
     if (walletClient) getAuthenticatedAccount();
   }, [walletClient]);
 
+  // Toggle video track
+  const toggleVideo = () => {
+    if (streamRef.current) {
+      streamRef.current.getVideoTracks().forEach((track) => {
+        track.enabled = !videoEnabled;
+      });
+      setVideoEnabled(!videoEnabled);
+    }
+  };
+
+  // Toggle audio track
+  const toggleAudio = () => {
+    if (streamRef.current) {
+      streamRef.current.getAudioTracks().forEach((track) => {
+        track.enabled = !audioEnabled;
+      });
+      setAudioEnabled(!audioEnabled);
+    }
+  };
+
   // Start streaming process
   const startStream = async () => {
     if (!title) return;
@@ -80,7 +101,6 @@ export default function StartSpace() {
 
     try {
       setIsStreaming(true);
-      setUploadStatus(0);
       setstreamStartTime(Date.now());
 
       // Request user media
@@ -98,8 +118,6 @@ export default function StartSpace() {
 
       // Store stream reference
       streamRef.current = stream;
-
-      console.log(account);
 
       // Create stream recorder
       recorderRef.current = new StreamRecorder(
@@ -127,18 +145,10 @@ export default function StartSpace() {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         }, 100);
-
-        // Update progress
-        const progress = Math.min(95, Math.floor((index / (index + 5)) * 100));
-        setUploadStatus(progress);
       });
 
       // Set up chunk upload callback to update progress
       recorderRef.current.onChunkUploaded((index, total) => {
-        // Calculate upload progress (max 95%, reserve 5% for finalizing)
-        const progress = Math.min(95, Math.floor((index / (total + 5)) * 100));
-        setUploadStatus(progress);
-
         toast({
           title: "Chunk Uploaded",
           description: `Chunk #${index + 1} uploaded to Grove.`,
@@ -153,7 +163,6 @@ export default function StartSpace() {
           variant: "destructive",
         });
       });
-
 
       // Initialize the stream
       const uri = await recorderRef.current.initializeStream(
@@ -201,9 +210,6 @@ export default function StartSpace() {
         videoRef.current.srcObject = null;
       }
 
-      // Set full progress
-      setUploadStatus(100);
-
       toast({
         title: "Stream Ended",
         description:
@@ -217,10 +223,9 @@ export default function StartSpace() {
         variant: "destructive",
       });
     } finally {
-      // Reset state after a brief delay to show 100% completion
+      // Reset state after a brief delay
       setTimeout(() => {
         setIsStreaming(false);
-        setUploadStatus(0);
       }, 1500);
     }
   };
@@ -246,7 +251,7 @@ export default function StartSpace() {
   // Handle post creation success
   const handlePostCreated = (newPostId: string) => {
     console.log(newPostId);
-    
+
     setPostId(newPostId);
     setShowChat(true);
 
@@ -313,18 +318,41 @@ export default function StartSpace() {
                 </div>
                 <CardContent className="pt-6">
                   <h2 className="text-xl font-semibold mb-4">{title}</h2>
-                  <div className="space-y-2 mb-6">
-                    <div className="flex justify-between text-sm">
-                      <span>Grove Upload</span>
-                      <span>{uploadStatus}%</span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="bg-primary h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${uploadStatus}%` }}
-                      ></div>
-                    </div>
+
+                  {/* Video and Audio Controls */}
+                  <div className="flex justify-center gap-4 mb-6">
+                    <Button
+                      variant={videoEnabled ? "default" : "outline"}
+                      className="rounded-full shadow-soft"
+                      onClick={toggleVideo}
+                    >
+                      {videoEnabled ? (
+                        <>
+                          <Video className="mr-2 h-4 w-4" /> Camera On
+                        </>
+                      ) : (
+                        <>
+                          <VideoOff className="mr-2 h-4 w-4" /> Camera Off
+                        </>
+                      )}
+                    </Button>
+                    <Button
+                      variant={audioEnabled ? "default" : "outline"}
+                      className="rounded-full shadow-soft"
+                      onClick={toggleAudio}
+                    >
+                      {audioEnabled ? (
+                        <>
+                          <Mic className="mr-2 h-4 w-4" /> Mic On
+                        </>
+                      ) : (
+                        <>
+                          <MicOff className="mr-2 h-4 w-4" /> Mic Off
+                        </>
+                      )}
+                    </Button>
                   </div>
+
                   <div className="flex flex-col sm:flex-row gap-4">
                     <Button
                       variant="destructive"
@@ -346,7 +374,9 @@ export default function StartSpace() {
                     <StreamPostButton
                       streamUri={streamUri}
                       title={title}
-                      disabled={!streamUri || (Date.now() - streamStartTime) / 1000  < 30} // Only enable 30 seconds after streaming starts
+                      disabled={
+                        !streamUri || (Date.now() - streamStartTime) / 1000 < 30
+                      } // Only enable 30 seconds after streaming starts
                       onPostCreated={handlePostCreated}
                     />
                   </div>
