@@ -393,7 +393,7 @@ export default function StartSpace() {
                   truly yours.
                 </p>
 
-                <Button
+                {/* <Button
                   variant="outline"
                   onClick={() => setIsDownloadMode(!isDownloadMode)}
                   className="mt-4 mb-4"
@@ -401,9 +401,9 @@ export default function StartSpace() {
                   {isDownloadMode
                     ? "Switch to Grove Upload"
                     : "Switch to Local Download"}
-                </Button>
+                </Button> */}
 
-                {streamUri && (
+                {/* {streamUri && (
                   <div className="mt-4 flex flex-col items-center">
                     <p className="mb-2 font-medium">Direct Link:</p>
                     <div className="flex items-center gap-2 max-w-full overflow-hidden">
@@ -442,7 +442,7 @@ export default function StartSpace() {
                       </Button>
                     </div>
                   </div>
-                )}
+                )} */}
               </div>
             </div>
 

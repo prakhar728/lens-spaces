@@ -1,6 +1,6 @@
 # 🌌 Lens Spaces
 
-**Lens Spaces** is a decentralized live streaming platform built on top of **Grove storage** and the **Lens Protocol**. It enables creators to broadcast live, segment their streams into efficient WebM chunks, and publish them in real time — all while preserving decentralization and playback continuity. This is accomplish by heavy utilising and relying on Grove storage and it's editable feature.
+**Lens Spaces** is a decentralized live streaming platform built on top of **Grove storage** and the **Lens Protocol**. It enables creators to broadcast live, segment their streams into efficient WebM chunks, and publish them in real time — all while preserving decentralization and playback continuity. This is accomplished by heavy utilising and relying on Grove storage and it's editable feature.
 
 ---
 
